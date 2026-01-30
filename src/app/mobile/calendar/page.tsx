@@ -2,14 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import styled from 'styled-components';
-import {
-  Window,
-  WindowHeader,
-  WindowContent,
-  Button,
-  AppBar,
-  Toolbar,
-} from 'react95';
+import { Button } from 'react95';
 import {
   format,
   startOfMonth,
@@ -24,36 +17,58 @@ import {
 } from 'date-fns';
 import { useRouter } from 'next/navigation';
 import { useLogStore } from '@/stores/logStore';
+import {
+  MobileContainer,
+  Header,
+  AppTitle,
+  VersionBadge,
+  MainWindow,
+  ContentArea,
+  TitleBar,
+  TitleBarButton,
+  InsetPanel,
+  FloatingActionButton,
+  Taskbar,
+  TaskbarButton,
+  TaskbarIcon,
+  PopupOverlay,
+  PopupWindow,
+  StyledTextArea,
+} from '@/components/mobile/MobileShared';
 
-const MobileContainer = styled.div`
-  padding: 8px;
-  padding-bottom: 70px;
-`;
+// ============================================
+// CALENDAR SPECIFIC STYLES
+// ============================================
 
-const MonthNav = styled.div`
+const CalendarNav = styled.div`
   display: flex;
   justify-content: space-between;
   align-items: center;
   padding: 8px;
+  background: #c0c0c0;
+  border-bottom: 2px solid #808080;
 `;
 
 const MonthTitle = styled.span`
-  font-size: 16px;
+  font-size: 14px;
   font-weight: bold;
 `;
 
 const CalendarGrid = styled.div`
   display: grid;
   grid-template-columns: repeat(7, 1fr);
-  gap: 2px;
+  gap: 1px;
+  background: #808080;
+  padding: 1px;
 `;
 
 const DayHeader = styled.div`
   text-align: center;
   font-size: 10px;
   font-weight: bold;
-  padding: 4px;
-  color: #666;
+  padding: 6px 2px;
+  background: #c0c0c0;
+  border-bottom: 2px solid #808080;
 `;
 
 const DayCell = styled.div<{ $isToday: boolean; $isCurrentMonth: boolean; $hasData: boolean }>`
@@ -62,13 +77,15 @@ const DayCell = styled.div<{ $isToday: boolean; $isCurrentMonth: boolean; $hasDa
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  font-size: 14px;
+  font-size: 13px;
   cursor: pointer;
   background: ${(props) =>
-    props.$isToday ? '#000080' : props.$hasData ? '#90EE90' : props.$isCurrentMonth ? '#fff' : '#ddd'};
-  color: ${(props) => (props.$isToday ? '#fff' : '#000')};
-  border: 1px solid #888;
+    props.$isToday ? '#000080' :
+    props.$hasData ? '#90EE90' :
+    props.$isCurrentMonth ? '#fff' : '#e0e0e0'};
+  color: ${(props) => props.$isToday ? '#fff' : '#000'};
   min-height: 44px;
+  border: 1px solid transparent;
 
   &:active {
     background: #000080;
@@ -82,43 +99,24 @@ const DayNumber = styled.span`
 
 const DayIndicator = styled.span`
   font-size: 8px;
+  color: #008000;
 `;
 
-const DayDetail = styled.div`
-  position: fixed;
-  inset: 0;
-  background: rgba(0, 0, 0, 0.5);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  z-index: 2000;
-  padding: 16px;
-`;
+const DAYS = ['Su', 'Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa'];
 
-const FixedTaskbar = styled(AppBar)`
-  position: fixed;
-  bottom: 0;
-  left: 0;
-  right: 0;
-  top: auto;
-  z-index: 1000;
-`;
-
-const TaskbarButton = styled(Button)`
-  flex: 1;
-  padding: 8px 4px;
-  font-size: 11px;
-  min-height: 44px;
-`;
-
-const DAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+// ============================================
+// MAIN COMPONENT
+// ============================================
 
 export default function MobileCalendarPage() {
   const router = useRouter();
   const [currentMonth, setCurrentMonth] = useState(new Date());
   const [selectedDay, setSelectedDay] = useState<string | null>(null);
+  const [noteText, setNoteText] = useState('');
+  const [showQuickLog, setShowQuickLog] = useState(false);
+  const [saving, setSaving] = useState(false);
 
-  const { dailyLogs, habitCompletions, fetchData } = useLogStore();
+  const { dailyLogs, habitCompletions, habits, fetchData, saveDailyLog } = useLogStore();
 
   useEffect(() => {
     fetchData();
@@ -134,130 +132,276 @@ export default function MobileCalendarPage() {
   const hasDataForDay = (date: Date) => {
     const dateStr = format(date, 'yyyy-MM-dd');
     return dailyLogs.some((l) => l.date === dateStr) ||
-           habitCompletions.some((c) => c.date === dateStr);
+           habitCompletions.some((c) => c.date === dateStr && c.completed);
   };
 
   const getSelectedDayData = () => {
     if (!selectedDay) return null;
     const log = dailyLogs.find((l) => l.date === selectedDay);
-    const completions = habitCompletions.filter((c) => c.date === selectedDay);
+    const completions = habitCompletions.filter((c) => c.date === selectedDay && c.completed);
     return { log, completions };
   };
 
   const dayData = getSelectedDayData();
 
+  const handleSaveNote = async () => {
+    if (!noteText.trim() || !selectedDay) return;
+    setSaving(true);
+
+    try {
+      const existingLog = dailyLogs.find((l) => l.date === selectedDay);
+      const updatedLog = {
+        date: selectedDay,
+        energy_level: existingLog?.energy_level ?? 3,
+        sleep_hours: existingLog?.sleep_hours ?? 7,
+        work_hours: existingLog?.work_hours ?? 0,
+        school_hours: existingLog?.school_hours ?? 0,
+        overall_rating: existingLog?.overall_rating ?? 3,
+        notes: noteText,
+        accomplishments: existingLog?.accomplishments ?? [],
+        created_at: existingLog?.created_at ?? new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      };
+
+      await saveDailyLog(updatedLog);
+      setNoteText('');
+      setShowQuickLog(false);
+    } catch (err) {
+      console.error('Failed to save note:', err);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const getHabitName = (habitId: string) => {
+    const habit = habits.find(h => h.habit_id === habitId);
+    return habit?.name || habitId;
+  };
+
   return (
     <>
       <MobileContainer>
-        <Window>
-          <WindowHeader style={{ display: 'flex', justifyContent: 'space-between' }}>
-            <span>Calendar</span>
-            <Button size="sm" onClick={() => router.push('/mobile')}>Back</Button>
-          </WindowHeader>
-          <WindowContent>
-            <MonthNav>
+        {/* Header */}
+        <Header>
+          <AppTitle>
+            Progress95
+            <VersionBadge>v1.0</VersionBadge>
+          </AppTitle>
+          <Button size="sm" onClick={() => router.push('/mobile')}>
+            Back
+          </Button>
+        </Header>
+
+        {/* Main Window */}
+        <MainWindow>
+          <TitleBar>
+            <span>📅 Calendar</span>
+          </TitleBar>
+
+          <ContentArea>
+            {/* Month Navigation */}
+            <CalendarNav>
               <Button size="sm" onClick={() => setCurrentMonth(subMonths(currentMonth, 1))}>
-                &lt;
+                ◀
               </Button>
               <MonthTitle>{format(currentMonth, 'MMMM yyyy')}</MonthTitle>
               <Button size="sm" onClick={() => setCurrentMonth(addMonths(currentMonth, 1))}>
-                &gt;
+                ▶
               </Button>
-            </MonthNav>
+            </CalendarNav>
 
-            <CalendarGrid>
-              {DAYS.map((day) => (
-                <DayHeader key={day}>{day}</DayHeader>
-              ))}
-              {days.map((day) => {
-                const isToday = isSameDay(day, new Date());
-                const isCurrentMonth = isSameMonth(day, currentMonth);
-                const hasData = hasDataForDay(day);
-                const dateStr = format(day, 'yyyy-MM-dd');
+            {/* Calendar Grid */}
+            <InsetPanel style={{ margin: 4, padding: 0, overflow: 'hidden' }}>
+              <CalendarGrid>
+                {/* Day Headers */}
+                {DAYS.map((day) => (
+                  <DayHeader key={day}>{day}</DayHeader>
+                ))}
 
-                return (
-                  <DayCell
-                    key={dateStr}
-                    $isToday={isToday}
-                    $isCurrentMonth={isCurrentMonth}
-                    $hasData={hasData}
-                    onClick={() => setSelectedDay(dateStr)}
-                  >
-                    <DayNumber>{format(day, 'd')}</DayNumber>
-                    {hasData && <DayIndicator>*</DayIndicator>}
-                  </DayCell>
-                );
-              })}
-            </CalendarGrid>
-          </WindowContent>
-        </Window>
+                {/* Day Cells */}
+                {days.map((day) => {
+                  const isToday = isSameDay(day, new Date());
+                  const isCurrentMonth = isSameMonth(day, currentMonth);
+                  const hasData = hasDataForDay(day);
+                  const dateStr = format(day, 'yyyy-MM-dd');
+
+                  return (
+                    <DayCell
+                      key={dateStr}
+                      $isToday={isToday}
+                      $isCurrentMonth={isCurrentMonth}
+                      $hasData={hasData}
+                      onClick={() => setSelectedDay(dateStr)}
+                    >
+                      <DayNumber>{format(day, 'd')}</DayNumber>
+                      {hasData && <DayIndicator>●</DayIndicator>}
+                    </DayCell>
+                  );
+                })}
+              </CalendarGrid>
+            </InsetPanel>
+
+            {/* Legend */}
+            <div style={{ padding: '8px', background: '#c0c0c0', fontSize: 10, display: 'flex', gap: 16, justifyContent: 'center' }}>
+              <span><span style={{ color: '#000080' }}>■</span> Today</span>
+              <span><span style={{ color: '#90EE90' }}>■</span> Has data</span>
+            </div>
+          </ContentArea>
+        </MainWindow>
+
+        {/* Floating Action Button */}
+        <FloatingActionButton onClick={() => {
+          setSelectedDay(format(new Date(), 'yyyy-MM-dd'));
+          setShowQuickLog(true);
+        }}>
+          📎
+        </FloatingActionButton>
+
+        {/* Taskbar */}
+        <Taskbar>
+          <TaskbarButton onClick={() => router.push('/mobile')}>
+            <TaskbarIcon>🏠</TaskbarIcon>
+          </TaskbarButton>
+          <TaskbarButton $active>
+            <TaskbarIcon>📅</TaskbarIcon>
+          </TaskbarButton>
+          <TaskbarButton onClick={() => {
+            setSelectedDay(format(new Date(), 'yyyy-MM-dd'));
+            setShowQuickLog(true);
+          }}>
+            <TaskbarIcon>📝</TaskbarIcon>
+          </TaskbarButton>
+          <TaskbarButton onClick={() => router.push('/mobile/settings')}>
+            <TaskbarIcon>⚙️</TaskbarIcon>
+          </TaskbarButton>
+        </Taskbar>
       </MobileContainer>
 
       {/* Day Detail Popup */}
-      {selectedDay && (
-        <DayDetail onClick={() => setSelectedDay(null)}>
-          <Window style={{ width: '100%', maxWidth: 350 }} onClick={(e) => e.stopPropagation()}>
-            <WindowHeader style={{ display: 'flex', justifyContent: 'space-between' }}>
-              <span>{format(new Date(selectedDay), 'EEEE, MMM d')}</span>
-              <Button size="sm" onClick={() => setSelectedDay(null)}>X</Button>
-            </WindowHeader>
-            <WindowContent>
+      {selectedDay && !showQuickLog && (
+        <PopupOverlay onClick={() => setSelectedDay(null)}>
+          <PopupWindow onClick={(e) => e.stopPropagation()}>
+            <TitleBar>
+              <span>📅 {format(new Date(selectedDay), 'EEE, MMM d')}</span>
+              <TitleBarButton onClick={() => setSelectedDay(null)}>✕</TitleBarButton>
+            </TitleBar>
+            <div style={{ padding: 12, background: '#c0c0c0' }}>
               {dayData?.log ? (
                 <>
-                  <p style={{ fontSize: 12, marginBottom: 8 }}>
-                    <strong>Energy:</strong> {dayData.log.energy_level || '-'}/5 |
-                    <strong> Sleep:</strong> {dayData.log.hours_slept || '-'}h |
-                    <strong> Rating:</strong> {dayData.log.overall_rating || '-'}/5
-                  </p>
+                  <div style={{
+                    display: 'grid',
+                    gridTemplateColumns: '1fr 1fr 1fr',
+                    gap: 8,
+                    marginBottom: 12,
+                    background: '#fff',
+                    padding: 8,
+                    border: '2px inset #808080'
+                  }}>
+                    <div style={{ textAlign: 'center' }}>
+                      <div style={{ fontSize: 18 }}>{'⚡'.repeat(dayData.log.energy_level || 0)}</div>
+                      <div style={{ fontSize: 9, color: '#808080' }}>Energy</div>
+                    </div>
+                    <div style={{ textAlign: 'center' }}>
+                      <div style={{ fontSize: 18 }}>{dayData.log.sleep_hours || '—'}h</div>
+                      <div style={{ fontSize: 9, color: '#808080' }}>Sleep</div>
+                    </div>
+                    <div style={{ textAlign: 'center' }}>
+                      <div style={{ fontSize: 18 }}>{'⭐'.repeat(dayData.log.overall_rating || 0)}</div>
+                      <div style={{ fontSize: 9, color: '#808080' }}>Rating</div>
+                    </div>
+                  </div>
                   {dayData.log.notes && (
-                    <div style={{ fontSize: 12, background: '#f0f0f0', padding: 8, marginBottom: 8 }}>
+                    <div style={{
+                      fontSize: 12,
+                      background: '#fff',
+                      padding: 8,
+                      marginBottom: 12,
+                      border: '2px inset #808080',
+                      maxHeight: 80,
+                      overflow: 'auto'
+                    }}>
                       {dayData.log.notes}
                     </div>
                   )}
                 </>
               ) : (
-                <p style={{ fontSize: 12, color: '#666' }}>No log for this day</p>
+                <div style={{
+                  textAlign: 'center',
+                  padding: 16,
+                  color: '#808080',
+                  fontSize: 12
+                }}>
+                  No log for this day
+                </div>
               )}
 
               {dayData?.completions && dayData.completions.length > 0 && (
-                <div style={{ marginTop: 8 }}>
-                  <strong style={{ fontSize: 12 }}>Habits:</strong>
-                  {dayData.completions.filter((c) => c.completed).map((c) => (
-                    <div key={c.completion_id} style={{ fontSize: 11, color: 'green' }}>
-                      [X] {c.habit_id}
+                <div style={{
+                  background: '#fff',
+                  border: '2px inset #808080',
+                  padding: 8,
+                  marginBottom: 12
+                }}>
+                  <div style={{ fontSize: 11, fontWeight: 'bold', marginBottom: 4 }}>Habits Completed:</div>
+                  {dayData.completions.map((c) => (
+                    <div key={c.completion_id || c.habit_id} style={{ fontSize: 11, color: '#008000' }}>
+                      ✓ {getHabitName(c.habit_id)}
                     </div>
                   ))}
                 </div>
               )}
 
-              <Button
-                style={{ width: '100%', marginTop: 12 }}
-                onClick={() => setSelectedDay(null)}
-              >
-                Close
-              </Button>
-            </WindowContent>
-          </Window>
-        </DayDetail>
+              <div style={{ display: 'flex', gap: 8 }}>
+                <Button
+                  style={{ flex: 1 }}
+                  onClick={() => {
+                    setNoteText(dayData?.log?.notes || '');
+                    setShowQuickLog(true);
+                  }}
+                >
+                  {dayData?.log ? 'Edit Note' : 'Add Note'}
+                </Button>
+                <Button style={{ flex: 1 }} onClick={() => setSelectedDay(null)}>
+                  Close
+                </Button>
+              </div>
+            </div>
+          </PopupWindow>
+        </PopupOverlay>
       )}
 
-      {/* Fixed Taskbar */}
-      <FixedTaskbar>
-        <Toolbar style={{ justifyContent: 'space-around', padding: '4px' }}>
-          <TaskbarButton onClick={() => router.push('/mobile')}>
-            Home
-          </TaskbarButton>
-          <TaskbarButton active>
-            Calendar
-          </TaskbarButton>
-          <TaskbarButton onClick={() => router.push('/mobile/coach')}>
-            Coach
-          </TaskbarButton>
-          <TaskbarButton onClick={() => router.push('/mobile/settings')}>
-            Settings
-          </TaskbarButton>
-        </Toolbar>
-      </FixedTaskbar>
+      {/* Quick Log Popup */}
+      {showQuickLog && selectedDay && (
+        <PopupOverlay onClick={() => { setShowQuickLog(false); setSelectedDay(null); }}>
+          <PopupWindow onClick={(e) => e.stopPropagation()}>
+            <TitleBar>
+              <span>📝 Note for {format(new Date(selectedDay), 'MMM d')}</span>
+              <TitleBarButton onClick={() => { setShowQuickLog(false); setSelectedDay(null); }}>✕</TitleBarButton>
+            </TitleBar>
+            <div style={{ padding: 12, background: '#c0c0c0' }}>
+              <StyledTextArea
+                value={noteText}
+                onChange={(e) => setNoteText(e.target.value)}
+                placeholder="What did you accomplish?"
+                autoFocus
+              />
+              <div style={{ marginTop: 8, display: 'flex', gap: 8 }}>
+                <Button
+                  primary
+                  style={{ flex: 1 }}
+                  onClick={handleSaveNote}
+                  disabled={saving || !noteText.trim()}
+                >
+                  {saving ? 'Saving...' : 'Save'}
+                </Button>
+                <Button style={{ flex: 1 }} onClick={() => { setShowQuickLog(false); setSelectedDay(null); }}>
+                  Cancel
+                </Button>
+              </div>
+            </div>
+          </PopupWindow>
+        </PopupOverlay>
+      )}
     </>
   );
 }
