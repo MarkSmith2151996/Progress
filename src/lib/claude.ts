@@ -1,8 +1,17 @@
 import { spawn } from 'child_process';
 import { ContextPackage, ChatMessage, ParsedAccomplishment } from '@/types';
 
-// Helper to call Claude CLI with -p flag (simpler, more reliable on Windows)
+// Check if running on Vercel (Linux server, no CLI available)
+const isVercel = process.env.VERCEL === '1' || process.env.VERCEL_ENV !== undefined;
+
+// Helper to call Claude CLI with -p flag (only works on localhost with Windows)
 async function callClaudeCLI(systemPrompt: string, userMessage: string): Promise<string> {
+  // Skip CLI calls on Vercel - it won't work
+  if (isVercel) {
+    console.log('[Claude CLI] Skipping - running on Vercel');
+    throw new Error('Claude CLI not available on Vercel');
+  }
+
   return new Promise((resolve, reject) => {
     // Combine system prompt and user message into a single prompt
     // Flatten to single line to avoid cmd.exe issues with multi-line strings
@@ -152,6 +161,11 @@ function determineTone(ctx: ContextPackage): string {
 // ============================================
 
 export async function getCoachSummary(ctx: ContextPackage): Promise<string> {
+  // On Vercel, return a static message
+  if (isVercel) {
+    return 'Coach is only available on desktop. Use the desktop app to chat with your coach.';
+  }
+
   try {
     const systemPrompt = buildSystemPrompt(ctx);
     const userMessage = 'Give me a brief status update in 2-3 sentences. Include one specific observation from the data.';
@@ -169,6 +183,11 @@ export async function getChatResponse(
   history: ChatMessage[],
   userMessage: string
 ): Promise<string> {
+  // On Vercel, return unavailable message
+  if (isVercel) {
+    return 'Coach is only available on desktop (localhost). The mobile version is for viewing stats and tracking habits only.';
+  }
+
   try {
     // Build conversation history into the prompt
     let conversationContext = '';
@@ -377,6 +396,21 @@ export async function parseAccomplishments(
   const difficultyHint = detectDifficultyIndicators(rawInput);
   const accomplishmentLines = splitAccomplishments(rawInput);
 
+  // On Vercel, use regex-only parsing (no Claude CLI)
+  if (isVercel) {
+    return accomplishmentLines.map((line) => {
+      const timeMatch = extractTimeDurations(line)[0];
+      const goalMatch = fuzzyMatchGoal(line, ctx.activeGoals);
+
+      return {
+        description: line,
+        goalId: goalMatch?.goalId || null,
+        timeSpent: timeMatch?.minutes || null,
+        difficulty: difficultyHint?.level || null,
+      };
+    });
+  }
+
   // Build enriched goal list with keywords for Claude
   const goalsList = ctx.activeGoals
     .map((g) => `- ID: ${g.id}, Title: "${g.title}", Keywords: ${g.title.toLowerCase().split(/[\s\-:→]+/).filter((w) => w.length > 2).join(', ')}`)
@@ -496,6 +530,14 @@ export async function generateWeeklySummary(ctx: ContextPackage): Promise<{
   summary: string;
   lessons: string;
 }> {
+  // On Vercel, return static message
+  if (isVercel) {
+    return {
+      summary: 'Weekly summaries are generated on the desktop app.',
+      lessons: 'Use the desktop version to get AI-powered insights.',
+    };
+  }
+
   try {
     const systemPrompt = buildSystemPrompt(ctx);
     const userMessage = `Generate a weekly summary with two parts:
