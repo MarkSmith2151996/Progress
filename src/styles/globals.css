@@ -1,0 +1,398 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* ============================================
+   DEFAULT THEME: TERMINAL CLASSIC
+   ============================================ */
+
+:root {
+  /* Backgrounds */
+  --bg-primary: #000000;
+  --bg-secondary: #0a0a0a;
+  --bg-tertiary: #141414;
+  --bg-popup: #0a0a0a;
+
+  /* Text */
+  --text-primary: #00ff00;
+  --text-secondary: #00cc00;
+  --text-muted: #008800;
+
+  /* Accents */
+  --accent-primary: #00ff00;
+  --accent-secondary: #00aa00;
+  --accent-warning: #ffaa00;
+  --accent-error: #ff4444;
+  --accent-success: #00ff00;
+
+  /* Borders */
+  --border-color: #00ff00;
+  --border-radius: 0px;
+  --border-width: 1px;
+
+  /* Typography */
+  --font-primary: 'Fira Code', 'Consolas', 'Monaco', monospace;
+  --font-heading: 'Fira Code', 'Consolas', 'Monaco', monospace;
+  --font-size-base: 14px;
+
+  /* Effects */
+  --shadow: none;
+  --glow: 0 0 10px rgba(0, 255, 0, 0.3);
+}
+
+/* ============================================
+   ALTERNATIVE THEMES
+   ============================================ */
+
+:root[data-theme='cyberpunk'] {
+  --bg-primary: #0d0221;
+  --bg-secondary: #150734;
+  --bg-tertiary: #1a0a42;
+  --bg-popup: #150734;
+  --text-primary: #ff00ff;
+  --text-secondary: #00ffff;
+  --text-muted: #8844aa;
+  --accent-primary: #ff00ff;
+  --accent-secondary: #00ffff;
+  --accent-warning: #ffff00;
+  --accent-error: #ff0066;
+  --accent-success: #00ff99;
+  --border-color: #ff00ff;
+  --border-radius: 4px;
+  --glow: 0 0 20px rgba(255, 0, 255, 0.4);
+}
+
+:root[data-theme='scandinavian'] {
+  --bg-primary: #ffffff;
+  --bg-secondary: #f8f9fa;
+  --bg-tertiary: #e9ecef;
+  --bg-popup: #ffffff;
+  --text-primary: #212529;
+  --text-secondary: #495057;
+  --text-muted: #adb5bd;
+  --accent-primary: #4a90a4;
+  --accent-secondary: #6c757d;
+  --accent-warning: #f0ad4e;
+  --accent-error: #dc3545;
+  --accent-success: #28a745;
+  --border-color: #dee2e6;
+  --border-radius: 8px;
+  --font-primary: 'Inter', -apple-system, sans-serif;
+  --font-heading: 'Inter', -apple-system, sans-serif;
+  --shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+  --glow: none;
+}
+
+:root[data-theme='obsidian'] {
+  --bg-primary: #1a1a1a;
+  --bg-secondary: #242424;
+  --bg-tertiary: #2e2e2e;
+  --bg-popup: #242424;
+  --text-primary: #e0e0e0;
+  --text-secondary: #b0b0b0;
+  --text-muted: #707070;
+  --accent-primary: #d4af37;
+  --accent-secondary: #b8860b;
+  --accent-warning: #ffa500;
+  --accent-error: #dc3545;
+  --accent-success: #50c878;
+  --border-color: #404040;
+  --border-radius: 6px;
+  --font-primary: 'Inter', -apple-system, sans-serif;
+  --font-heading: 'Inter', -apple-system, sans-serif;
+  --shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+  --glow: none;
+}
+
+:root[data-theme='synthwave'] {
+  --bg-primary: #2b1055;
+  --bg-secondary: #3d1466;
+  --bg-tertiary: #4f1977;
+  --bg-popup: #3d1466;
+  --text-primary: #f5f5f5;
+  --text-secondary: #ff71ce;
+  --text-muted: #9966cc;
+  --accent-primary: #ff71ce;
+  --accent-secondary: #01cdfe;
+  --accent-warning: #fffb96;
+  --accent-error: #ff4444;
+  --accent-success: #05ffa1;
+  --border-color: #ff71ce;
+  --border-radius: 4px;
+  --glow: 0 0 15px rgba(255, 113, 206, 0.5);
+}
+
+:root[data-theme='paper-notebook'] {
+  --bg-primary: #fffef5;
+  --bg-secondary: #faf8f0;
+  --bg-tertiary: #f5f3eb;
+  --bg-popup: #fffef5;
+  --text-primary: #2c2c2c;
+  --text-secondary: #4a4a4a;
+  --text-muted: #888888;
+  --accent-primary: #2c5282;
+  --accent-secondary: #4a6fa5;
+  --accent-warning: #d69e2e;
+  --accent-error: #c53030;
+  --accent-success: #276749;
+  --border-color: #ccc;
+  --border-radius: 4px;
+  --font-primary: 'Georgia', serif;
+  --font-heading: 'Georgia', serif;
+  --shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+  --glow: none;
+}
+
+/* ============================================
+   BASE STYLES
+   ============================================ */
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  font-family: var(--font-primary);
+  font-size: var(--font-size-base);
+  background-color: var(--bg-primary);
+  color: var(--text-primary);
+  margin: 0;
+  padding: 0;
+  min-height: 100vh;
+}
+
+/* ============================================
+   SCROLLBAR STYLES
+   ============================================ */
+
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: var(--bg-secondary);
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--text-muted);
+  border-radius: var(--border-radius);
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--text-secondary);
+}
+
+/* ============================================
+   TYPOGRAPHY
+   ============================================ */
+
+h1,
+h2,
+h3,
+h4,
+h5,
+h6 {
+  font-family: var(--font-heading);
+  color: var(--text-primary);
+  margin: 0;
+}
+
+a {
+  color: var(--accent-primary);
+  text-decoration: none;
+}
+
+a:hover {
+  text-decoration: underline;
+}
+
+/* ============================================
+   FORM ELEMENTS
+   ============================================ */
+
+input,
+textarea,
+select {
+  font-family: var(--font-primary);
+  font-size: var(--font-size-base);
+  background: var(--bg-tertiary);
+  color: var(--text-primary);
+  border: var(--border-width) solid var(--border-color);
+  border-radius: var(--border-radius);
+  padding: 8px 12px;
+  outline: none;
+}
+
+input:focus,
+textarea:focus,
+select:focus {
+  box-shadow: var(--glow);
+}
+
+button {
+  font-family: var(--font-primary);
+  font-size: var(--font-size-base);
+  background: var(--bg-tertiary);
+  color: var(--text-primary);
+  border: var(--border-width) solid var(--border-color);
+  border-radius: var(--border-radius);
+  padding: 8px 16px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+button:hover {
+  background: var(--accent-secondary);
+  box-shadow: var(--glow);
+}
+
+button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* ============================================
+   UTILITY CLASSES
+   ============================================ */
+
+.text-primary {
+  color: var(--text-primary);
+}
+
+.text-secondary {
+  color: var(--text-secondary);
+}
+
+.text-muted {
+  color: var(--text-muted);
+}
+
+.text-accent {
+  color: var(--accent-primary);
+}
+
+.text-warning {
+  color: var(--accent-warning);
+}
+
+.text-error {
+  color: var(--accent-error);
+}
+
+.text-success {
+  color: var(--accent-success);
+}
+
+.bg-primary {
+  background-color: var(--bg-primary);
+}
+
+.bg-secondary {
+  background-color: var(--bg-secondary);
+}
+
+.bg-tertiary {
+  background-color: var(--bg-tertiary);
+}
+
+.border-theme {
+  border: var(--border-width) solid var(--border-color);
+  border-radius: var(--border-radius);
+}
+
+.glow {
+  box-shadow: var(--glow);
+}
+
+/* ============================================
+   ANIMATIONS
+   ============================================ */
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes slideIn {
+  from {
+    transform: translateY(-10px);
+    opacity: 0;
+  }
+  to {
+    transform: translateY(0);
+    opacity: 1;
+  }
+}
+
+@keyframes pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.5;
+  }
+}
+
+.animate-fadeIn {
+  animation: fadeIn 0.2s ease-out;
+}
+
+.animate-slideIn {
+  animation: slideIn 0.2s ease-out;
+}
+
+.animate-pulse {
+  animation: pulse 2s infinite;
+}
+
+/* ============================================
+   TERMINAL CURSOR
+   ============================================ */
+
+.terminal-cursor::after {
+  content: '_';
+  animation: blink 1s step-end infinite;
+}
+
+@keyframes blink {
+  0%,
+  50% {
+    opacity: 1;
+  }
+  51%,
+  100% {
+    opacity: 0;
+  }
+}
+
+/* ============================================
+   POPUP STYLES
+   ============================================ */
+
+.popup-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.7);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 50;
+  animation: fadeIn 0.15s ease-out;
+}
+
+.popup-content {
+  background: var(--bg-popup);
+  border: var(--border-width) solid var(--border-color);
+  border-radius: var(--border-radius);
+  box-shadow: var(--shadow);
+  max-width: 90vw;
+  max-height: 90vh;
+  overflow: auto;
+  animation: slideIn 0.15s ease-out;
+}
