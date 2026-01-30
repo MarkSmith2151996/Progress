@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, Suspense } from 'react';
 import styled from 'styled-components';
 import { Window, WindowHeader, WindowContent, TextInput, Button } from 'react95';
 import { useRouter, useSearchParams } from 'next/navigation';
@@ -72,7 +72,37 @@ const Footer = styled.div`
   margin-top: 8px;
 `;
 
-export default function LoginPage() {
+const LoadingBox = styled.div`
+  padding: 32px;
+  text-align: center;
+  font-size: 12px;
+`;
+
+// Loading fallback component with Windows 95 styling
+function LoginLoading() {
+  return (
+    <StyledComponentsRegistry>
+      <React95Provider>
+        <LoginContainer>
+          <LoginWindow>
+            <TitleBar>
+              <Icon>🔒</Icon>
+              <span>Progress Tracker - Login</span>
+            </TitleBar>
+            <WindowContent>
+              <LoadingBox>
+                Loading...
+              </LoadingBox>
+            </WindowContent>
+          </LoginWindow>
+        </LoginContainer>
+      </React95Provider>
+    </StyledComponentsRegistry>
+  );
+}
+
+// Main login form content
+function LoginContent() {
   const [pin, setPin] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
@@ -115,48 +145,57 @@ export default function LoginPage() {
   };
 
   return (
+    <LoginContainer>
+      <LoginWindow>
+        <TitleBar>
+          <Icon>🔒</Icon>
+          <span>Progress Tracker - Login</span>
+        </TitleBar>
+        <WindowContent>
+          <Form onSubmit={handleSubmit}>
+            <div>
+              <Label htmlFor="pin">Enter PIN to continue:</Label>
+              <PinInput
+                id="pin"
+                type="password"
+                inputMode="numeric"
+                pattern="[0-9]*"
+                value={pin}
+                onChange={handlePinChange}
+                placeholder="****"
+                autoFocus
+                autoComplete="off"
+              />
+            </div>
+
+            {error && <ErrorText>{error}</ErrorText>}
+
+            <SubmitButton
+              type="submit"
+              primary
+              disabled={pin.length < 4 || loading}
+            >
+              {loading ? 'Verifying...' : 'Unlock'}
+            </SubmitButton>
+
+            <Footer>
+              Antonio&apos;s Progress Tracker
+            </Footer>
+          </Form>
+        </WindowContent>
+      </LoginWindow>
+    </LoginContainer>
+  );
+}
+
+// Main page with Suspense boundary
+export default function LoginPage() {
+  return (
     <StyledComponentsRegistry>
       <React95Provider>
-        <LoginContainer>
-          <LoginWindow>
-            <TitleBar>
-              <Icon>🔒</Icon>
-              <span>Progress Tracker - Login</span>
-            </TitleBar>
-            <WindowContent>
-              <Form onSubmit={handleSubmit}>
-                <div>
-                  <Label htmlFor="pin">Enter PIN to continue:</Label>
-                  <PinInput
-                    id="pin"
-                    type="password"
-                    inputMode="numeric"
-                    pattern="[0-9]*"
-                    value={pin}
-                    onChange={handlePinChange}
-                    placeholder="****"
-                    autoFocus
-                    autoComplete="off"
-                  />
-                </div>
-
-                {error && <ErrorText>{error}</ErrorText>}
-
-                <SubmitButton
-                  type="submit"
-                  primary
-                  disabled={pin.length < 4 || loading}
-                >
-                  {loading ? 'Verifying...' : 'Unlock'}
-                </SubmitButton>
-
-                <Footer>
-                  Antonio&apos;s Progress Tracker
-                </Footer>
-              </Form>
-            </WindowContent>
-          </LoginWindow>
-        </LoginContainer>
+        <Suspense fallback={<LoginLoading />}>
+          <LoginContent />
+        </Suspense>
       </React95Provider>
     </StyledComponentsRegistry>
   );
