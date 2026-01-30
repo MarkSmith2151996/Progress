@@ -4,14 +4,20 @@ import { useState, useEffect } from 'react';
 import styled from 'styled-components';
 import {
   Window,
-  WindowHeader,
   WindowContent,
   Button,
-  Checkbox,
+  Table,
+  TableHead,
+  TableBody,
+  TableRow,
+  TableHeadCell,
+  TableDataCell,
   Tabs,
   Tab,
   TabBody,
+  Toolbar,
   TextInput,
+  GroupBox,
 } from 'react95';
 import { format } from 'date-fns';
 import { useRouter } from 'next/navigation';
@@ -23,167 +29,181 @@ if (typeof window !== 'undefined' && 'serviceWorker' in navigator) {
   navigator.serviceWorker.register('/sw.js').catch(console.error);
 }
 
+// ============================================
+// STYLED COMPONENTS - Coins95 Style
+// ============================================
+
 const MobileContainer = styled.div`
   min-height: 100vh;
+  min-height: 100dvh;
   background: #008080;
-  padding: 4px;
-  padding-bottom: 56px;
+  display: flex;
+  flex-direction: column;
 `;
 
-const MainWindow = styled(Window)`
-  width: 100%;
-  min-height: calc(100vh - 64px);
-`;
-
-const TitleBar = styled(WindowHeader)`
+const Header = styled.div`
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: 2px 4px;
+  padding: 12px 8px;
+  background: #008080;
+`;
+
+const AppTitle = styled.h1`
+  font-size: 28px;
+  font-weight: bold;
+  font-style: italic;
+  color: #ff00ff;
+  text-shadow: 2px 2px 0 #800080;
+  margin: 0;
+  font-family: 'Times New Roman', serif;
+`;
+
+const VersionBadge = styled.span`
+  font-size: 10px;
+  color: #c0c0c0;
+  font-style: normal;
+  margin-left: 4px;
+  vertical-align: super;
+`;
+
+const MainWindow = styled(Window)`
+  flex: 1;
+  margin: 0 4px;
+  margin-bottom: 108px;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+`;
+
+const ContentArea = styled(WindowContent)`
+  flex: 1;
+  padding: 0 !important;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+`;
+
+const StyledTable = styled(Table)`
+  width: 100%;
   font-size: 12px;
-`;
 
-const TitleText = styled.span`
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  font-weight: bold;
-`;
-
-const StatsRow = styled.div`
-  display: flex;
-  justify-content: space-around;
-  padding: 8px 4px;
-  background: #c0c0c0;
-  border: 2px inset #fff;
-  margin: 4px 0;
-`;
-
-const StatBox = styled.div`
-  text-align: center;
-  padding: 4px 12px;
-`;
-
-const StatValue = styled.div`
-  font-size: 18px;
-  font-weight: bold;
-  font-family: 'ms_sans_serif', sans-serif;
-`;
-
-const StatLabel = styled.div`
-  font-size: 9px;
-  text-transform: uppercase;
-  color: #444;
-`;
-
-const HabitList = styled.div`
-  background: #fff;
-  border: 2px inset #888;
-  max-height: 250px;
-  overflow-y: auto;
-`;
-
-const HabitRow = styled.div<{ $completed: boolean }>`
-  display: flex;
-  align-items: center;
-  padding: 10px 8px;
-  border-bottom: 1px solid #c0c0c0;
-  background: ${props => props.$completed ? '#c0ffc0' : '#fff'};
-  min-height: 44px;
-
-  &:active {
-    background: #000080;
-    color: #fff;
+  th, td {
+    padding: 8px 6px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
   }
 `;
 
-const HabitName = styled.span`
-  font-size: 14px;
-  margin-left: 8px;
+const TableContainer = styled.div`
   flex: 1;
+  overflow-y: auto;
+  overflow-x: hidden;
+  border: 2px inset #808080;
+  background: #fff;
+  margin: 4px;
 `;
 
-const QuickButtons = styled.div`
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 4px;
-  margin: 8px 0;
+const IconCell = styled.span`
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
 `;
 
-const BigButton = styled(Button)`
-  padding: 12px 8px;
-  font-size: 12px;
-  min-height: 48px;
+const HabitIcon = styled.span<{ $color: string }>`
+  width: 16px;
+  height: 16px;
+  background: ${props => props.$color};
+  border: 1px solid #000;
+  border-radius: 2px;
+  display: inline-block;
+  font-size: 10px;
+  text-align: center;
+  line-height: 16px;
 `;
 
-const FixedTaskbar = styled.div`
+const StatusCell = styled.span<{ $completed: boolean }>`
+  color: ${props => props.$completed ? '#008000' : '#808080'};
+  font-weight: ${props => props.$completed ? 'bold' : 'normal'};
+`;
+
+const StreakCell = styled.span<{ $streak: number }>`
+  color: ${props => props.$streak >= 7 ? '#ff8c00' : props.$streak >= 3 ? '#008000' : '#000'};
+`;
+
+const TabsContainer = styled.div`
+  border-top: 2px solid #808080;
+`;
+
+const StyledTabs = styled(Tabs)`
+  button {
+    font-size: 11px;
+    min-width: 80px;
+  }
+`;
+
+const FloatingActionButton = styled(Button)`
+  position: fixed;
+  bottom: 70px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 48px;
+  height: 48px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, #ff00ff 0%, #800080 100%);
+  border: 3px outset #ff80ff;
+  z-index: 1000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 20px;
+  color: #fff;
+  box-shadow: 2px 2px 4px rgba(0,0,0,0.3);
+
+  &:active {
+    border-style: inset;
+    transform: translateX(-50%) scale(0.95);
+  }
+`;
+
+const Taskbar = styled.div`
   position: fixed;
   bottom: 0;
   left: 0;
   right: 0;
-  height: 52px;
+  height: 48px;
   background: #c0c0c0;
   border-top: 2px outset #fff;
   display: flex;
   align-items: center;
-  padding: 4px;
-  gap: 2px;
-  z-index: 1000;
-`;
-
-const StartButton = styled(Button)`
-  font-weight: bold;
+  justify-content: space-around;
   padding: 4px 8px;
-  font-size: 11px;
-  min-height: 44px;
-  display: flex;
-  align-items: center;
-  gap: 4px;
+  z-index: 999;
 `;
 
-const TaskbarButton = styled(Button)`
-  min-width: 44px;
-  min-height: 44px;
-  padding: 4px;
-  font-size: 10px;
+const TaskbarButton = styled(Button)<{ $active?: boolean }>`
+  width: 48px;
+  height: 36px;
+  padding: 2px;
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 2px;
+  font-size: 16px;
+  ${props => props.$active && `
+    border-style: inset;
+    background: #dfdfdf;
+  `}
 `;
 
 const TaskbarIcon = styled.span`
-  font-size: 16px;
+  font-size: 18px;
+  line-height: 1;
 `;
 
-const TaskbarLabel = styled.span`
-  font-size: 8px;
-`;
-
-const TaskbarClock = styled.div`
-  margin-left: auto;
-  padding: 4px 8px;
-  border: 2px inset #888;
-  font-size: 11px;
-  min-height: 32px;
-  display: flex;
-  align-items: center;
-`;
-
-const FloatingButton = styled(Button)`
-  position: fixed;
-  bottom: 64px;
-  right: 12px;
-  width: 56px;
-  height: 56px;
-  border-radius: 4px;
-  font-size: 24px;
-  z-index: 999;
-  box-shadow: 4px 4px 0 #000;
-`;
-
-const Popup = styled.div`
+// Quick Log Popup
+const PopupOverlay = styled.div`
   position: fixed;
   inset: 0;
   background: rgba(0, 0, 0, 0.5);
@@ -191,55 +211,95 @@ const Popup = styled.div`
   align-items: center;
   justify-content: center;
   z-index: 2000;
-  padding: 8px;
+  padding: 16px;
 `;
 
 const PopupWindow = styled(Window)`
   width: 100%;
-  max-width: 320px;
+  max-width: 300px;
 `;
 
-const GoalCard = styled.div`
-  padding: 12px;
-  margin-bottom: 8px;
-  background: #fff;
-  border: 2px inset #888;
-`;
-
-const GoalTitle = styled.div`
-  font-size: 13px;
+const PopupHeader = styled.div`
+  background: linear-gradient(90deg, #000080, #1084d0);
+  color: #fff;
+  padding: 4px 8px;
   font-weight: bold;
-  margin-bottom: 4px;
+  font-size: 12px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
 `;
 
-const GoalProgress = styled.div`
-  font-size: 11px;
-  color: #666;
+const CloseButton = styled(Button)`
+  min-width: 20px;
+  min-height: 20px;
+  padding: 0;
+  font-size: 12px;
 `;
 
-const ProgressBar = styled.div`
-  height: 8px;
-  background: #c0c0c0;
-  border: 1px inset #888;
-  margin-top: 4px;
-`;
-
-const ProgressFill = styled.div<{ $percent: number }>`
-  height: 100%;
-  background: #000080;
-  width: ${props => Math.min(100, props.$percent)}%;
+const PopupContent = styled(WindowContent)`
+  padding: 12px;
 `;
 
 const NoteTextArea = styled.textarea`
   width: 100%;
-  min-height: 100px;
-  padding: 8px;
-  font-size: 14px;
-  border: 2px inset #888;
+  min-height: 80px;
+  padding: 6px;
+  font-size: 12px;
+  border: 2px inset #808080;
   background: #fff;
   font-family: inherit;
   resize: vertical;
+  margin-bottom: 8px;
 `;
+
+// Goal Progress Row Component
+const GoalRow = styled(TableRow)`
+  cursor: pointer;
+  &:hover {
+    background: #000080;
+    color: #fff;
+  }
+`;
+
+const ProgressText = styled.span<{ $percent: number }>`
+  color: ${props => props.$percent >= 75 ? '#008000' : props.$percent >= 50 ? '#808000' : '#800000'};
+  font-weight: bold;
+`;
+
+// ============================================
+// ICON COLORS FOR HABITS
+// ============================================
+
+const habitColors = [
+  '#ff6b6b', '#4ecdc4', '#45b7d1', '#96ceb4', '#ffeaa7',
+  '#dfe6e9', '#fd79a8', '#a29bfe', '#00b894', '#e17055',
+];
+
+function getHabitColor(index: number): string {
+  return habitColors[index % habitColors.length];
+}
+
+function getHabitEmoji(name: string): string {
+  const lower = name.toLowerCase();
+  if (lower.includes('gym') || lower.includes('workout') || lower.includes('exercise')) return '💪';
+  if (lower.includes('read')) return '📚';
+  if (lower.includes('meditat')) return '🧘';
+  if (lower.includes('water') || lower.includes('drink')) return '💧';
+  if (lower.includes('sleep') || lower.includes('bed')) return '😴';
+  if (lower.includes('walk') || lower.includes('run')) return '🏃';
+  if (lower.includes('study') || lower.includes('sat') || lower.includes('learn')) return '📖';
+  if (lower.includes('code') || lower.includes('program')) return '💻';
+  if (lower.includes('eat') || lower.includes('diet') || lower.includes('food')) return '🥗';
+  if (lower.includes('journal') || lower.includes('write')) return '✍️';
+  if (lower.includes('pray') || lower.includes('church')) return '🙏';
+  if (lower.includes('save') || lower.includes('money')) return '💰';
+  return '✓';
+}
+
+// ============================================
+// MAIN COMPONENT
+// ============================================
 
 export default function MobilePage() {
   const router = useRouter();
@@ -248,7 +308,6 @@ export default function MobilePage() {
   const [showQuickLog, setShowQuickLog] = useState(false);
   const [noteText, setNoteText] = useState('');
   const [saving, setSaving] = useState(false);
-  const [currentTime, setCurrentTime] = useState('');
 
   const {
     habits,
@@ -264,31 +323,20 @@ export default function MobilePage() {
   useEffect(() => {
     fetchData();
     fetchGoals();
-
-    // Update clock
-    const updateClock = () => {
-      setCurrentTime(format(new Date(), 'h:mm a'));
-    };
-    updateClock();
-    const interval = setInterval(updateClock, 60000);
-    return () => clearInterval(interval);
   }, []);
 
   const activeHabits = habits.filter((h) => h.active);
   const todayCompletions = habitCompletions.filter((c) => c.date === today);
   const completedCount = todayCompletions.filter((c) => c.completed).length;
-
-  const streak = dailyLogs.filter((l) => {
-    const logDate = new Date(l.date);
-    const now = new Date();
-    const diffDays = Math.floor((now.getTime() - logDate.getTime()) / (1000 * 60 * 60 * 24));
-    return diffDays <= 7;
-  }).length;
-
-  const weeklyScore = Math.round((completedCount / Math.max(activeHabits.length, 1)) * 100);
+  const activeGoals = goals.filter((g) => g.status === 'active');
 
   const isHabitCompleted = (habitId: string) => {
     return todayCompletions.some((c) => c.habit_id === habitId && c.completed);
+  };
+
+  const getHabitStreak = (habitId: string) => {
+    const habit = habits.find(h => h.habit_id === habitId);
+    return habit?.streak || 0;
   };
 
   const handleToggleHabit = async (habitId: string) => {
@@ -300,7 +348,6 @@ export default function MobilePage() {
     setSaving(true);
 
     try {
-      // Get existing log for today or create new one
       const existingLog = dailyLogs.find((l) => l.date === today);
       const updatedLog = {
         date: today,
@@ -325,8 +372,6 @@ export default function MobilePage() {
     }
   };
 
-  const activeGoals = goals.filter((g) => g.status === 'active');
-
   const getGoalProgress = (goal: typeof goals[0]) => {
     if (!goal.target_value) return 0;
     const current = goal.current_value ?? goal.start_value ?? 0;
@@ -336,141 +381,207 @@ export default function MobilePage() {
   return (
     <>
       <MobileContainer>
+        {/* Header */}
+        <Header>
+          <AppTitle>
+            Progress95
+            <VersionBadge>v1.0</VersionBadge>
+          </AppTitle>
+          <Button size="sm" onClick={() => router.push('/mobile/settings')}>
+            Settings...
+          </Button>
+        </Header>
+
+        {/* Main Content Window */}
         <MainWindow>
-          <TitleBar>
-            <TitleText>
-              <span style={{ fontSize: 14 }}>📊</span>
-              Progress Tracker
-            </TitleText>
-            <span>{format(new Date(), 'EEE, MMM d')}</span>
-          </TitleBar>
-
-          <WindowContent style={{ padding: 4 }}>
-            {/* Stats */}
-            <StatsRow>
-              <StatBox>
-                <StatValue>{weeklyScore}%</StatValue>
-                <StatLabel>Score</StatLabel>
-              </StatBox>
-              <StatBox>
-                <StatValue>{streak}</StatValue>
-                <StatLabel>Streak</StatLabel>
-              </StatBox>
-              <StatBox>
-                <StatValue>{completedCount}/{activeHabits.length}</StatValue>
-                <StatLabel>Habits</StatLabel>
-              </StatBox>
-            </StatsRow>
-
-            {/* Tabs - Only Habits and Goals */}
-            <Tabs value={activeTab} onChange={(v) => setActiveTab(v as number)}>
-              <Tab value={0}>Habits</Tab>
-              <Tab value={1}>Goals</Tab>
-            </Tabs>
-
-            <TabBody style={{ padding: 4, minHeight: 280 }}>
+          <ContentArea>
+            {/* Table Container */}
+            <TableContainer>
               {activeTab === 0 && (
-                <>
-                  <HabitList>
+                <StyledTable>
+                  <TableHead>
+                    <TableRow>
+                      <TableHeadCell>Habit</TableHeadCell>
+                      <TableHeadCell style={{ width: 70, textAlign: 'center' }}>Status</TableHeadCell>
+                      <TableHeadCell style={{ width: 50, textAlign: 'right' }}>Streak</TableHeadCell>
+                    </TableRow>
+                  </TableHead>
+                  <TableBody>
                     {activeHabits.length === 0 ? (
-                      <div style={{ padding: 16, textAlign: 'center', color: '#666' }}>
-                        No habits yet. Add some in Settings!
-                      </div>
+                      <TableRow>
+                        <TableDataCell colSpan={3} style={{ textAlign: 'center', padding: 20, color: '#808080' }}>
+                          No habits yet. Add some in Settings!
+                        </TableDataCell>
+                      </TableRow>
                     ) : (
-                      activeHabits.map((habit) => (
-                        <HabitRow
-                          key={habit.habit_id}
-                          $completed={isHabitCompleted(habit.habit_id)}
-                          onClick={() => handleToggleHabit(habit.habit_id)}
-                        >
-                          <Checkbox
-                            checked={isHabitCompleted(habit.habit_id)}
-                            onChange={() => {}}
-                          />
-                          <HabitName>{habit.name}</HabitName>
-                          {isHabitCompleted(habit.habit_id) && <span>✓</span>}
-                        </HabitRow>
-                      ))
+                      activeHabits.map((habit, index) => {
+                        const completed = isHabitCompleted(habit.habit_id);
+                        const streak = getHabitStreak(habit.habit_id);
+                        return (
+                          <TableRow
+                            key={habit.habit_id}
+                            onClick={() => handleToggleHabit(habit.habit_id)}
+                            style={{ cursor: 'pointer' }}
+                          >
+                            <TableDataCell>
+                              <IconCell>
+                                <HabitIcon $color={getHabitColor(index)}>
+                                  {getHabitEmoji(habit.name)}
+                                </HabitIcon>
+                                {habit.name}
+                              </IconCell>
+                            </TableDataCell>
+                            <TableDataCell style={{ textAlign: 'center' }}>
+                              <StatusCell $completed={completed}>
+                                {completed ? '✓ Done' : '○ Todo'}
+                              </StatusCell>
+                            </TableDataCell>
+                            <TableDataCell style={{ textAlign: 'right' }}>
+                              <StreakCell $streak={streak}>
+                                {streak}d 🔥
+                              </StreakCell>
+                            </TableDataCell>
+                          </TableRow>
+                        );
+                      })
                     )}
-                  </HabitList>
-                  <QuickButtons>
-                    <BigButton onClick={() => setShowQuickLog(true)}>
-                      📝 Add Note
-                    </BigButton>
-                    <BigButton onClick={() => router.push('/mobile/calendar')}>
-                      📅 Calendar
-                    </BigButton>
-                  </QuickButtons>
-                </>
+                  </TableBody>
+                </StyledTable>
               )}
 
               {activeTab === 1 && (
-                <div>
-                  {activeGoals.length === 0 ? (
-                    <div style={{ padding: 16, textAlign: 'center', color: '#666' }}>
-                      No active goals. Add some in Settings!
-                    </div>
-                  ) : (
-                    activeGoals.map((goal) => (
-                      <GoalCard key={goal.goal_id}>
-                        <GoalTitle>{goal.title}</GoalTitle>
-                        {goal.target_value && (
-                          <>
-                            <GoalProgress>
-                              {goal.current_value ?? goal.start_value ?? 0} / {goal.target_value} {goal.unit || ''}
-                            </GoalProgress>
-                            <ProgressBar>
-                              <ProgressFill $percent={getGoalProgress(goal)} />
-                            </ProgressBar>
-                          </>
-                        )}
-                      </GoalCard>
-                    ))
-                  )}
-                </div>
+                <StyledTable>
+                  <TableHead>
+                    <TableRow>
+                      <TableHeadCell>Goal</TableHeadCell>
+                      <TableHeadCell style={{ width: 70, textAlign: 'center' }}>Progress</TableHeadCell>
+                      <TableHeadCell style={{ width: 60, textAlign: 'right' }}>Days</TableHeadCell>
+                    </TableRow>
+                  </TableHead>
+                  <TableBody>
+                    {activeGoals.length === 0 ? (
+                      <TableRow>
+                        <TableDataCell colSpan={3} style={{ textAlign: 'center', padding: 20, color: '#808080' }}>
+                          No active goals. Add some in Settings!
+                        </TableDataCell>
+                      </TableRow>
+                    ) : (
+                      activeGoals.map((goal) => {
+                        const progress = getGoalProgress(goal);
+                        const daysLeft = goal.deadline
+                          ? Math.max(0, Math.ceil((new Date(goal.deadline).getTime() - Date.now()) / (1000 * 60 * 60 * 24)))
+                          : '—';
+                        return (
+                          <GoalRow key={goal.goal_id}>
+                            <TableDataCell>
+                              <IconCell>
+                                <HabitIcon $color="#4ecdc4">
+                                  🎯
+                                </HabitIcon>
+                                {goal.title}
+                              </IconCell>
+                            </TableDataCell>
+                            <TableDataCell style={{ textAlign: 'center' }}>
+                              <ProgressText $percent={progress}>
+                                {progress}%
+                              </ProgressText>
+                            </TableDataCell>
+                            <TableDataCell style={{ textAlign: 'right' }}>
+                              {daysLeft}d
+                            </TableDataCell>
+                          </GoalRow>
+                        );
+                      })
+                    )}
+                  </TableBody>
+                </StyledTable>
               )}
-            </TabBody>
-          </WindowContent>
+
+              {activeTab === 2 && (
+                <StyledTable>
+                  <TableHead>
+                    <TableRow>
+                      <TableHeadCell>Date</TableHeadCell>
+                      <TableHeadCell style={{ width: 50, textAlign: 'center' }}>Energy</TableHeadCell>
+                      <TableHeadCell style={{ width: 50, textAlign: 'center' }}>Rating</TableHeadCell>
+                    </TableRow>
+                  </TableHead>
+                  <TableBody>
+                    {dailyLogs.length === 0 ? (
+                      <TableRow>
+                        <TableDataCell colSpan={3} style={{ textAlign: 'center', padding: 20, color: '#808080' }}>
+                          No logs yet. Start tracking!
+                        </TableDataCell>
+                      </TableRow>
+                    ) : (
+                      dailyLogs.slice(0, 14).map((log) => (
+                        <TableRow key={log.date}>
+                          <TableDataCell>
+                            <IconCell>
+                              <HabitIcon $color="#ffeaa7">
+                                📅
+                              </HabitIcon>
+                              {format(new Date(log.date), 'MMM d')}
+                            </IconCell>
+                          </TableDataCell>
+                          <TableDataCell style={{ textAlign: 'center' }}>
+                            {'⚡'.repeat(log.energy_level || 0)}
+                          </TableDataCell>
+                          <TableDataCell style={{ textAlign: 'center' }}>
+                            {'⭐'.repeat(log.overall_rating || 0)}
+                          </TableDataCell>
+                        </TableRow>
+                      ))
+                    )}
+                  </TableBody>
+                </StyledTable>
+              )}
+            </TableContainer>
+
+            {/* Tabs */}
+            <TabsContainer>
+              <StyledTabs value={activeTab} onChange={(val) => setActiveTab(val as number)}>
+                <Tab value={0}>Today ({completedCount}/{activeHabits.length})</Tab>
+                <Tab value={1}>Goals</Tab>
+                <Tab value={2}>History</Tab>
+              </StyledTabs>
+            </TabsContainer>
+          </ContentArea>
         </MainWindow>
+
+        {/* Floating Action Button */}
+        <FloatingActionButton onClick={() => setShowQuickLog(true)}>
+          📎
+        </FloatingActionButton>
+
+        {/* Taskbar */}
+        <Taskbar>
+          <TaskbarButton $active>
+            <TaskbarIcon>🏠</TaskbarIcon>
+          </TaskbarButton>
+          <TaskbarButton onClick={() => router.push('/mobile/calendar')}>
+            <TaskbarIcon>📅</TaskbarIcon>
+          </TaskbarButton>
+          <TaskbarButton onClick={() => setShowQuickLog(true)}>
+            <TaskbarIcon>📝</TaskbarIcon>
+          </TaskbarButton>
+          <TaskbarButton onClick={() => router.push('/mobile/settings')}>
+            <TaskbarIcon>⚙️</TaskbarIcon>
+          </TaskbarButton>
+        </Taskbar>
       </MobileContainer>
 
-      {/* Floating Quick Log Button */}
-      <FloatingButton onClick={() => setShowQuickLog(true)}>
-        +
-      </FloatingButton>
-
-      {/* Taskbar - Removed Coach button */}
-      <FixedTaskbar>
-        <StartButton active>
-          <span style={{ fontSize: 14 }}>🪟</span>
-          Start
-        </StartButton>
-        <TaskbarButton active>
-          <TaskbarIcon>🏠</TaskbarIcon>
-          <TaskbarLabel>Home</TaskbarLabel>
-        </TaskbarButton>
-        <TaskbarButton onClick={() => router.push('/mobile/calendar')}>
-          <TaskbarIcon>📅</TaskbarIcon>
-          <TaskbarLabel>Calendar</TaskbarLabel>
-        </TaskbarButton>
-        <TaskbarButton onClick={() => router.push('/mobile/settings')}>
-          <TaskbarIcon>⚙️</TaskbarIcon>
-          <TaskbarLabel>Settings</TaskbarLabel>
-        </TaskbarButton>
-        <TaskbarClock>{currentTime}</TaskbarClock>
-      </FixedTaskbar>
-
-      {/* Note Popup - Simple text note, no coach */}
+      {/* Quick Log Popup */}
       {showQuickLog && (
-        <Popup onClick={() => setShowQuickLog(false)}>
+        <PopupOverlay onClick={() => setShowQuickLog(false)}>
           <PopupWindow onClick={(e) => e.stopPropagation()}>
-            <WindowHeader style={{ display: 'flex', justifyContent: 'space-between' }}>
-              <span>Add Note</span>
-              <Button size="sm" onClick={() => setShowQuickLog(false)}>×</Button>
-            </WindowHeader>
-            <WindowContent>
-              <p style={{ fontSize: 11, marginBottom: 8, color: '#666' }}>
-                Add a note for today:
+            <PopupHeader>
+              <span>📝 Quick Note</span>
+              <CloseButton onClick={() => setShowQuickLog(false)}>✕</CloseButton>
+            </PopupHeader>
+            <PopupContent>
+              <p style={{ fontSize: 11, marginBottom: 8, color: '#808080' }}>
+                {format(new Date(), 'EEEE, MMMM d, yyyy')}
               </p>
               <NoteTextArea
                 value={noteText}
@@ -480,15 +591,15 @@ export default function MobilePage() {
               />
               <Button
                 primary
-                style={{ width: '100%', marginTop: 8, padding: 12 }}
+                fullWidth
                 onClick={handleSaveNote}
                 disabled={saving || !noteText.trim()}
               >
                 {saving ? 'Saving...' : 'Save Note'}
               </Button>
-            </WindowContent>
+            </PopupContent>
           </PopupWindow>
-        </Popup>
+        </PopupOverlay>
       )}
     </>
   );
