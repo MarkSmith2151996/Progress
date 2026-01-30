@@ -1,6 +1,9 @@
 import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
 
+// Check if running on Vercel
+const isVercel = process.env.VERCEL === '1' || process.env.VERCEL_ENV !== undefined;
+
 // PIN protection middleware
 export function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
@@ -19,28 +22,39 @@ export function middleware(request: NextRequest) {
     pathname === '/manifest.json' ||
     pathname.endsWith('.ico') ||
     pathname.endsWith('.png') ||
-    pathname.endsWith('.jpg')
+    pathname.endsWith('.jpg') ||
+    pathname.endsWith('.woff2')
   ) {
     return NextResponse.next();
   }
 
   // Check if ACCESS_PIN is set (only enforce in production/Vercel)
   const accessPin = process.env.ACCESS_PIN;
-  if (!accessPin) {
-    // No PIN configured, allow access (dev mode)
-    return NextResponse.next();
+
+  // If no PIN configured, allow access (dev mode) but still handle redirects
+  const isAuthenticated = !accessPin ||
+    request.cookies.get('progress_auth')?.value === `authenticated_${hashPin(accessPin)}`;
+
+  // If not authenticated, redirect to login
+  if (!isAuthenticated) {
+    const loginUrl = new URL('/login', request.url);
+    loginUrl.searchParams.set('redirect', pathname === '/' && isVercel ? '/mobile' : pathname);
+    return NextResponse.redirect(loginUrl);
   }
 
-  // Check for auth cookie
-  const authCookie = request.cookies.get('progress_auth');
-  if (authCookie?.value === `authenticated_${hashPin(accessPin)}`) {
-    return NextResponse.next();
+  // VERCEL: Redirect root "/" to "/mobile"
+  // Desktop dashboard is not available on Vercel (coach doesn't work)
+  if (isVercel && pathname === '/') {
+    return NextResponse.redirect(new URL('/mobile', request.url));
   }
 
-  // Redirect to login page
-  const loginUrl = new URL('/login', request.url);
-  loginUrl.searchParams.set('redirect', pathname);
-  return NextResponse.redirect(loginUrl);
+  // VERCEL: Redirect any desktop-only routes to mobile
+  // These routes won't work properly on Vercel anyway
+  if (isVercel && !pathname.startsWith('/mobile') && !pathname.startsWith('/login')) {
+    return NextResponse.redirect(new URL('/mobile', request.url));
+  }
+
+  return NextResponse.next();
 }
 
 // Simple hash function for the PIN (not cryptographically secure, but sufficient for this use case)
