@@ -1,41 +1,49 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { Button } from 'react95';
+import { Button, ProgressBar } from 'react95';
 import { format } from 'date-fns';
 import { useRouter } from 'next/navigation';
 import { useLogStore } from '@/stores/logStore';
 import { useGoalStore } from '@/stores/goalStore';
 import {
   MobileContainer,
-  Header,
-  AppTitle,
-  VersionBadge,
   MainWindow,
   ContentArea,
   TitleBar,
-  TableContainer,
-  StyledTable,
-  TableHeader,
-  TableHeaderCell,
-  TableBody,
-  TableRow,
-  TableCell,
-  IconBadge,
-  StatusBadge,
-  TabsRow,
-  TabButton,
-  FloatingActionButton,
-  Taskbar,
-  TaskbarButton,
-  TaskbarIcon,
+  TitleBarButton,
+  ScrollArea,
+  GoalCard,
+  GoalTitle,
+  GoalProgressWrapper,
+  GoalPercentage,
+  BottomTabs,
+  BottomTab,
+  TabIcon,
+  TabLabel,
+  ListContainer,
+  ListItem,
+  Checkbox,
+  ListItemText,
+  ListItemMeta,
   EmptyState,
   EmptyStateIcon,
   EmptyStateTitle,
   EmptyStateText,
   PopupOverlay,
   PopupWindow,
+  PopupContent,
+  StyledInput,
   StyledTextArea,
+  FormRow,
+  FormLabel,
+  SectionHeader,
+  AddButton,
+  AccomplishmentItem,
+  AccomplishmentIcon,
+  AccomplishmentContent,
+  AccomplishmentText,
+  AccomplishmentDate,
 } from '@/components/mobile/MobileShared';
 
 // Register service worker
@@ -43,46 +51,23 @@ if (typeof window !== 'undefined' && 'serviceWorker' in navigator) {
   navigator.serviceWorker.register('/sw.js').catch(console.error);
 }
 
-// ============================================
-// HABIT HELPERS
-// ============================================
-
-const habitColors = [
-  '#ff6b6b', '#4ecdc4', '#45b7d1', '#96ceb4', '#ffeaa7',
-  '#fd79a8', '#a29bfe', '#00b894', '#e17055', '#74b9ff',
-];
-
-function getHabitColor(index: number): string {
-  return habitColors[index % habitColors.length];
-}
-
-function getHabitEmoji(name: string): string {
-  const lower = name.toLowerCase();
-  if (lower.includes('gym') || lower.includes('workout') || lower.includes('exercise')) return '💪';
-  if (lower.includes('read')) return '📚';
-  if (lower.includes('meditat')) return '🧘';
-  if (lower.includes('water') || lower.includes('drink')) return '💧';
-  if (lower.includes('sleep') || lower.includes('bed')) return '😴';
-  if (lower.includes('walk') || lower.includes('run')) return '🏃';
-  if (lower.includes('study') || lower.includes('sat') || lower.includes('learn')) return '📖';
-  if (lower.includes('code') || lower.includes('program')) return '💻';
-  if (lower.includes('eat') || lower.includes('diet') || lower.includes('food')) return '🥗';
-  if (lower.includes('journal') || lower.includes('write')) return '✍️';
-  if (lower.includes('pray') || lower.includes('church')) return '🙏';
-  if (lower.includes('save') || lower.includes('money')) return '💰';
-  return '✓';
-}
-
-// ============================================
-// MAIN COMPONENT
-// ============================================
+// Tab identifiers
+const TABS = {
+  ACCOMPLISHMENTS: 0,
+  HABITS: 1,
+  MONTHLY: 2,
+  SUMMARY: 3, // Default tab
+};
 
 export default function MobilePage() {
   const router = useRouter();
   const [today] = useState(format(new Date(), 'yyyy-MM-dd'));
-  const [activeTab, setActiveTab] = useState(0);
-  const [showQuickLog, setShowQuickLog] = useState(false);
-  const [noteText, setNoteText] = useState('');
+  const [activeTab, setActiveTab] = useState(TABS.SUMMARY); // Default to Goal Summary
+  const [showAddGoal, setShowAddGoal] = useState(false);
+  const [showAddAccomplishment, setShowAddAccomplishment] = useState(false);
+  const [newGoalTitle, setNewGoalTitle] = useState('');
+  const [newGoalTarget, setNewGoalTarget] = useState('');
+  const [newAccomplishment, setNewAccomplishment] = useState('');
   const [saving, setSaving] = useState(false);
 
   const {
@@ -94,7 +79,7 @@ export default function MobilePage() {
     saveDailyLog,
   } = useLogStore();
 
-  const { goals, fetchGoals } = useGoalStore();
+  const { goals, fetchGoals, saveGoal } = useGoalStore();
 
   useEffect(() => {
     fetchData();
@@ -103,28 +88,76 @@ export default function MobilePage() {
 
   const activeHabits = habits.filter((h) => h.active);
   const todayCompletions = habitCompletions.filter((c) => c.date === today);
-  const completedCount = todayCompletions.filter((c) => c.completed).length;
   const activeGoals = goals.filter((g) => g.status === 'active');
+  const monthlyGoals = activeGoals.filter((g) => g.type === 'monthly');
+
+  // Get accomplishments from daily logs
+  const allAccomplishments: { text: string; date: string }[] = [];
+  dailyLogs.forEach((log) => {
+    if (log.accomplishments && Array.isArray(log.accomplishments)) {
+      log.accomplishments.forEach((acc) => {
+        allAccomplishments.push({ text: acc, date: log.date });
+      });
+    }
+    // Also include notes as accomplishments if present
+    if (log.notes && log.notes.trim()) {
+      allAccomplishments.push({ text: log.notes, date: log.date });
+    }
+  });
+  // Sort by date descending
+  allAccomplishments.sort((a, b) => b.date.localeCompare(a.date));
 
   const isHabitCompleted = (habitId: string) => {
     return todayCompletions.some((c) => c.habit_id === habitId && c.completed);
-  };
-
-  const getHabitStreak = (habitId: string) => {
-    const habit = habits.find(h => h.habit_id === habitId);
-    return habit?.streak || 0;
   };
 
   const handleToggleHabit = async (habitId: string) => {
     await toggleHabit(habitId, today);
   };
 
-  const handleSaveNote = async () => {
-    if (!noteText.trim()) return;
+  const getGoalProgress = (goal: typeof goals[0]) => {
+    if (!goal.target_value) return 0;
+    const current = goal.current_value ?? goal.start_value ?? 0;
+    return Math.min(100, Math.round((current / goal.target_value) * 100));
+  };
+
+  const handleAddGoal = async () => {
+    if (!newGoalTitle.trim()) return;
+    setSaving(true);
+
+    try {
+      const goal = {
+        goal_id: `goal_${Date.now()}`,
+        title: newGoalTitle.trim(),
+        type: 'monthly' as const,
+        target_value: parseFloat(newGoalTarget) || 100,
+        current_value: 0,
+        start_value: 0,
+        status: 'active' as const,
+        deadline: format(new Date(new Date().getFullYear(), new Date().getMonth() + 1, 0), 'yyyy-MM-dd'),
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      };
+
+      await saveGoal(goal);
+      setNewGoalTitle('');
+      setNewGoalTarget('');
+      setShowAddGoal(false);
+    } catch (err) {
+      console.error('Failed to add goal:', err);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleAddAccomplishment = async () => {
+    if (!newAccomplishment.trim()) return;
     setSaving(true);
 
     try {
       const existingLog = dailyLogs.find((l) => l.date === today);
+      const currentAccomplishments = existingLog?.accomplishments || [];
+
       const updatedLog = {
         date: today,
         energy_level: existingLog?.energy_level ?? 3,
@@ -132,273 +165,343 @@ export default function MobilePage() {
         work_hours: existingLog?.work_hours ?? 0,
         school_hours: existingLog?.school_hours ?? 0,
         overall_rating: existingLog?.overall_rating ?? 3,
-        notes: noteText,
-        accomplishments: existingLog?.accomplishments ?? [],
+        notes: existingLog?.notes ?? '',
+        accomplishments: [...currentAccomplishments, newAccomplishment.trim()],
         created_at: existingLog?.created_at ?? new Date().toISOString(),
         updated_at: new Date().toISOString(),
       };
 
       await saveDailyLog(updatedLog);
-      setNoteText('');
-      setShowQuickLog(false);
+      setNewAccomplishment('');
+      setShowAddAccomplishment(false);
     } catch (err) {
-      console.error('Failed to save note:', err);
+      console.error('Failed to add accomplishment:', err);
     } finally {
       setSaving(false);
     }
   };
 
-  const getGoalProgress = (goal: typeof goals[0]) => {
-    if (!goal.target_value) return 0;
-    const current = goal.current_value ?? goal.start_value ?? 0;
-    return Math.round((current / goal.target_value) * 100);
+  // Get title for current tab
+  const getTabTitle = () => {
+    switch (activeTab) {
+      case TABS.ACCOMPLISHMENTS:
+        return 'Accomplishments';
+      case TABS.HABITS:
+        return 'Habits';
+      case TABS.MONTHLY:
+        return 'Monthly Goals';
+      case TABS.SUMMARY:
+      default:
+        return 'Goal Summary';
+    }
   };
 
-  // Empty states
-  const renderHabitsEmpty = () => (
-    <EmptyState>
-      <EmptyStateIcon>📋</EmptyStateIcon>
-      <EmptyStateTitle>No habits yet!</EmptyStateTitle>
-      <EmptyStateText>
-        Start building good habits. Add your first one to begin tracking.
-      </EmptyStateText>
-      <Button onClick={() => router.push('/mobile/settings')}>
-        + Add Habit
-      </Button>
-    </EmptyState>
-  );
+  // Render Goal Summary (default tab)
+  const renderGoalSummary = () => {
+    if (activeGoals.length === 0) {
+      return (
+        <EmptyState>
+          <EmptyStateIcon>🎯</EmptyStateIcon>
+          <EmptyStateTitle>No goals yet!</EmptyStateTitle>
+          <EmptyStateText>
+            Set your first goal to start tracking progress toward your dreams.
+          </EmptyStateText>
+          <Button onClick={() => { setActiveTab(TABS.MONTHLY); setShowAddGoal(true); }}>
+            + Add Goal
+          </Button>
+        </EmptyState>
+      );
+    }
 
-  const renderGoalsEmpty = () => (
-    <EmptyState>
-      <EmptyStateIcon>🎯</EmptyStateIcon>
-      <EmptyStateTitle>No goals yet!</EmptyStateTitle>
-      <EmptyStateText>
-        Set goals to stay focused. What do you want to achieve?
-      </EmptyStateText>
-      <Button onClick={() => router.push('/mobile/settings')}>
-        + Add Goal
-      </Button>
-    </EmptyState>
-  );
+    return (
+      <>
+        {activeGoals.map((goal) => {
+          const progress = getGoalProgress(goal);
+          return (
+            <GoalCard key={goal.goal_id}>
+              <GoalTitle>{goal.title}</GoalTitle>
+              <GoalProgressWrapper>
+                <ProgressBar value={progress} />
+              </GoalProgressWrapper>
+              <GoalPercentage>{progress}%</GoalPercentage>
+            </GoalCard>
+          );
+        })}
+      </>
+    );
+  };
 
-  const renderHistoryEmpty = () => (
-    <EmptyState>
-      <EmptyStateIcon>📅</EmptyStateIcon>
-      <EmptyStateTitle>No history yet!</EmptyStateTitle>
-      <EmptyStateText>
-        Complete habits and add notes to build your history.
-      </EmptyStateText>
-      <Button onClick={() => setShowQuickLog(true)}>
-        + Add Note
-      </Button>
-    </EmptyState>
-  );
+  // Render Habits tab
+  const renderHabits = () => {
+    if (activeHabits.length === 0) {
+      return (
+        <EmptyState>
+          <EmptyStateIcon>📋</EmptyStateIcon>
+          <EmptyStateTitle>No habits yet!</EmptyStateTitle>
+          <EmptyStateText>
+            Build good habits one day at a time. Add your first habit to start tracking.
+          </EmptyStateText>
+        </EmptyState>
+      );
+    }
+
+    const completedCount = todayCompletions.filter((c) => c.completed).length;
+
+    return (
+      <>
+        <SectionHeader>
+          Today - {completedCount}/{activeHabits.length} completed
+        </SectionHeader>
+        <ListContainer>
+          {activeHabits.map((habit) => {
+            const completed = isHabitCompleted(habit.habit_id);
+            return (
+              <ListItem
+                key={habit.habit_id}
+                $completed={completed}
+                $clickable
+                onClick={() => handleToggleHabit(habit.habit_id)}
+              >
+                <Checkbox $checked={completed}>
+                  {completed && '✓'}
+                </Checkbox>
+                <ListItemText $completed={completed}>
+                  {habit.name}
+                </ListItemText>
+                {habit.streak > 0 && (
+                  <ListItemMeta>{habit.streak}🔥</ListItemMeta>
+                )}
+              </ListItem>
+            );
+          })}
+        </ListContainer>
+      </>
+    );
+  };
+
+  // Render Monthly Goals tab
+  const renderMonthlyGoals = () => {
+    return (
+      <>
+        <SectionHeader>
+          {format(new Date(), 'MMMM yyyy')} Goals
+        </SectionHeader>
+
+        {monthlyGoals.length === 0 ? (
+          <EmptyState>
+            <EmptyStateIcon>📅</EmptyStateIcon>
+            <EmptyStateTitle>No monthly goals!</EmptyStateTitle>
+            <EmptyStateText>
+              Set monthly goals to break down big dreams into achievable targets.
+            </EmptyStateText>
+          </EmptyState>
+        ) : (
+          <>
+            {monthlyGoals.map((goal) => {
+              const progress = getGoalProgress(goal);
+              return (
+                <GoalCard key={goal.goal_id}>
+                  <GoalTitle>{goal.title}</GoalTitle>
+                  <GoalProgressWrapper>
+                    <ProgressBar value={progress} />
+                  </GoalProgressWrapper>
+                  <GoalPercentage>
+                    {goal.current_value ?? 0} / {goal.target_value} ({progress}%)
+                  </GoalPercentage>
+                </GoalCard>
+              );
+            })}
+          </>
+        )}
+
+        <AddButton onClick={() => setShowAddGoal(true)}>
+          + Add Monthly Goal
+        </AddButton>
+      </>
+    );
+  };
+
+  // Render Accomplishments tab
+  const renderAccomplishments = () => {
+    if (allAccomplishments.length === 0) {
+      return (
+        <EmptyState>
+          <EmptyStateIcon>🏆</EmptyStateIcon>
+          <EmptyStateTitle>No accomplishments yet!</EmptyStateTitle>
+          <EmptyStateText>
+            Record your wins, big or small. Every accomplishment counts!
+          </EmptyStateText>
+          <Button onClick={() => setShowAddAccomplishment(true)}>
+            + Add Win
+          </Button>
+        </EmptyState>
+      );
+    }
+
+    return (
+      <>
+        <SectionHeader>Your Wins</SectionHeader>
+        <ListContainer>
+          {allAccomplishments.slice(0, 50).map((acc, index) => (
+            <AccomplishmentItem key={index}>
+              <AccomplishmentIcon>🏆</AccomplishmentIcon>
+              <AccomplishmentContent>
+                <AccomplishmentText>{acc.text}</AccomplishmentText>
+                <AccomplishmentDate>
+                  {format(new Date(acc.date), 'MMM d, yyyy')}
+                </AccomplishmentDate>
+              </AccomplishmentContent>
+            </AccomplishmentItem>
+          ))}
+        </ListContainer>
+        <AddButton onClick={() => setShowAddAccomplishment(true)}>
+          + Add Win
+        </AddButton>
+      </>
+    );
+  };
 
   return (
     <>
       <MobileContainer>
-        {/* Header */}
-        <Header>
-          <AppTitle>
-            Progress95
-            <VersionBadge>v1.0</VersionBadge>
-          </AppTitle>
-          <Button size="sm" onClick={() => router.push('/mobile/settings')}>
-            Settings...
-          </Button>
-        </Header>
-
         {/* Main Content Window */}
         <MainWindow>
           <TitleBar>
-            <span>📊 {format(new Date(), 'EEEE, MMM d')}</span>
+            <span>📊 {getTabTitle()}</span>
+            <div style={{ display: 'flex', gap: 4 }}>
+              {activeTab === TABS.ACCOMPLISHMENTS && (
+                <TitleBarButton size="sm" onClick={() => setShowAddAccomplishment(true)}>
+                  +
+                </TitleBarButton>
+              )}
+              {activeTab === TABS.MONTHLY && (
+                <TitleBarButton size="sm" onClick={() => setShowAddGoal(true)}>
+                  +
+                </TitleBarButton>
+              )}
+              <TitleBarButton size="sm" onClick={() => router.push('/mobile/calendar')}>
+                📅
+              </TitleBarButton>
+              <TitleBarButton size="sm" onClick={() => router.push('/mobile/settings')}>
+                ⚙️
+              </TitleBarButton>
+            </div>
           </TitleBar>
 
           <ContentArea>
-            {/* Table Content */}
-            <TableContainer>
-              {/* HABITS TAB */}
-              {activeTab === 0 && (
-                activeHabits.length === 0 ? renderHabitsEmpty() : (
-                  <StyledTable>
-                    <TableHeader>
-                      <tr>
-                        <TableHeaderCell>Habit</TableHeaderCell>
-                        <TableHeaderCell style={{ width: 70, textAlign: 'center' }}>Status</TableHeaderCell>
-                        <TableHeaderCell style={{ width: 55, textAlign: 'right' }}>Streak</TableHeaderCell>
-                      </tr>
-                    </TableHeader>
-                    <TableBody>
-                      {activeHabits.map((habit, index) => {
-                        const completed = isHabitCompleted(habit.habit_id);
-                        const streak = getHabitStreak(habit.habit_id);
-                        return (
-                          <TableRow
-                            key={habit.habit_id}
-                            $clickable
-                            onClick={() => handleToggleHabit(habit.habit_id)}
-                          >
-                            <TableCell>
-                              <IconBadge $color={getHabitColor(index)}>
-                                {getHabitEmoji(habit.name)}
-                              </IconBadge>
-                              {habit.name}
-                            </TableCell>
-                            <TableCell style={{ textAlign: 'center' }}>
-                              <StatusBadge $variant={completed ? 'success' : 'pending'}>
-                                {completed ? '✓ Done' : '○ Todo'}
-                              </StatusBadge>
-                            </TableCell>
-                            <TableCell style={{ textAlign: 'right' }}>
-                              <StatusBadge $variant={streak >= 7 ? 'warning' : streak >= 3 ? 'success' : 'pending'}>
-                                {streak}🔥
-                              </StatusBadge>
-                            </TableCell>
-                          </TableRow>
-                        );
-                      })}
-                    </TableBody>
-                  </StyledTable>
-                )
-              )}
-
-              {/* GOALS TAB */}
-              {activeTab === 1 && (
-                activeGoals.length === 0 ? renderGoalsEmpty() : (
-                  <StyledTable>
-                    <TableHeader>
-                      <tr>
-                        <TableHeaderCell>Goal</TableHeaderCell>
-                        <TableHeaderCell style={{ width: 65, textAlign: 'center' }}>Progress</TableHeaderCell>
-                        <TableHeaderCell style={{ width: 50, textAlign: 'right' }}>Days</TableHeaderCell>
-                      </tr>
-                    </TableHeader>
-                    <TableBody>
-                      {activeGoals.map((goal) => {
-                        const progress = getGoalProgress(goal);
-                        const daysLeft = goal.deadline
-                          ? Math.max(0, Math.ceil((new Date(goal.deadline).getTime() - Date.now()) / (1000 * 60 * 60 * 24)))
-                          : '—';
-                        return (
-                          <TableRow key={goal.goal_id} $clickable>
-                            <TableCell>
-                              <IconBadge $color="#4ecdc4">🎯</IconBadge>
-                              {goal.title}
-                            </TableCell>
-                            <TableCell style={{ textAlign: 'center' }}>
-                              <StatusBadge $variant={progress >= 75 ? 'success' : progress >= 50 ? 'warning' : 'pending'}>
-                                {progress}%
-                              </StatusBadge>
-                            </TableCell>
-                            <TableCell style={{ textAlign: 'right' }}>
-                              {daysLeft}d
-                            </TableCell>
-                          </TableRow>
-                        );
-                      })}
-                    </TableBody>
-                  </StyledTable>
-                )
-              )}
-
-              {/* HISTORY TAB */}
-              {activeTab === 2 && (
-                dailyLogs.length === 0 ? renderHistoryEmpty() : (
-                  <StyledTable>
-                    <TableHeader>
-                      <tr>
-                        <TableHeaderCell>Date</TableHeaderCell>
-                        <TableHeaderCell style={{ width: 60, textAlign: 'center' }}>Energy</TableHeaderCell>
-                        <TableHeaderCell style={{ width: 60, textAlign: 'center' }}>Rating</TableHeaderCell>
-                      </tr>
-                    </TableHeader>
-                    <TableBody>
-                      {dailyLogs.slice(0, 14).map((log) => (
-                        <TableRow key={log.date}>
-                          <TableCell>
-                            <IconBadge $color="#ffeaa7">📅</IconBadge>
-                            {format(new Date(log.date), 'MMM d')}
-                          </TableCell>
-                          <TableCell style={{ textAlign: 'center' }}>
-                            {'⚡'.repeat(Math.min(log.energy_level || 0, 5))}
-                          </TableCell>
-                          <TableCell style={{ textAlign: 'center' }}>
-                            {'⭐'.repeat(Math.min(log.overall_rating || 0, 5))}
-                          </TableCell>
-                        </TableRow>
-                      ))}
-                    </TableBody>
-                  </StyledTable>
-                )
-              )}
-            </TableContainer>
-
-            {/* Tabs */}
-            <TabsRow>
-              <TabButton $active={activeTab === 0} onClick={() => setActiveTab(0)}>
-                Today ({completedCount}/{activeHabits.length})
-              </TabButton>
-              <TabButton $active={activeTab === 1} onClick={() => setActiveTab(1)}>
-                Goals
-              </TabButton>
-              <TabButton $active={activeTab === 2} onClick={() => setActiveTab(2)}>
-                History
-              </TabButton>
-            </TabsRow>
+            <ScrollArea>
+              {activeTab === TABS.SUMMARY && renderGoalSummary()}
+              {activeTab === TABS.HABITS && renderHabits()}
+              {activeTab === TABS.MONTHLY && renderMonthlyGoals()}
+              {activeTab === TABS.ACCOMPLISHMENTS && renderAccomplishments()}
+            </ScrollArea>
           </ContentArea>
         </MainWindow>
 
-        {/* Floating Action Button */}
-        <FloatingActionButton onClick={() => setShowQuickLog(true)}>
-          📎
-        </FloatingActionButton>
-
-        {/* Taskbar */}
-        <Taskbar>
-          <TaskbarButton $active>
-            <TaskbarIcon>🏠</TaskbarIcon>
-          </TaskbarButton>
-          <TaskbarButton onClick={() => router.push('/mobile/calendar')}>
-            <TaskbarIcon>📅</TaskbarIcon>
-          </TaskbarButton>
-          <TaskbarButton onClick={() => setShowQuickLog(true)}>
-            <TaskbarIcon>📝</TaskbarIcon>
-          </TaskbarButton>
-          <TaskbarButton onClick={() => router.push('/mobile/settings')}>
-            <TaskbarIcon>⚙️</TaskbarIcon>
-          </TaskbarButton>
-        </Taskbar>
+        {/* Bottom Tab Navigation - 4 tabs */}
+        <BottomTabs>
+          <BottomTab
+            $active={activeTab === TABS.ACCOMPLISHMENTS}
+            onClick={() => setActiveTab(TABS.ACCOMPLISHMENTS)}
+          >
+            <TabIcon>🏆</TabIcon>
+            <TabLabel>Accomp</TabLabel>
+          </BottomTab>
+          <BottomTab
+            $active={activeTab === TABS.HABITS}
+            onClick={() => setActiveTab(TABS.HABITS)}
+          >
+            <TabIcon>✅</TabIcon>
+            <TabLabel>Habits</TabLabel>
+          </BottomTab>
+          <BottomTab
+            $active={activeTab === TABS.MONTHLY}
+            onClick={() => setActiveTab(TABS.MONTHLY)}
+          >
+            <TabIcon>📅</TabIcon>
+            <TabLabel>Monthly</TabLabel>
+          </BottomTab>
+          <BottomTab
+            $active={activeTab === TABS.SUMMARY}
+            onClick={() => setActiveTab(TABS.SUMMARY)}
+          >
+            <TabIcon>📊</TabIcon>
+            <TabLabel>Summary</TabLabel>
+          </BottomTab>
+        </BottomTabs>
       </MobileContainer>
 
-      {/* Quick Log Popup */}
-      {showQuickLog && (
-        <PopupOverlay onClick={() => setShowQuickLog(false)}>
+      {/* Add Goal Popup */}
+      {showAddGoal && (
+        <PopupOverlay onClick={() => setShowAddGoal(false)}>
           <PopupWindow onClick={(e) => e.stopPropagation()}>
             <TitleBar>
-              <span>📝 Quick Note</span>
-              <Button size="sm" onClick={() => setShowQuickLog(false)}>✕</Button>
+              <span>📅 Add Monthly Goal</span>
+              <TitleBarButton size="sm" onClick={() => setShowAddGoal(false)}>
+                ✕
+              </TitleBarButton>
             </TitleBar>
-            <div style={{ padding: 12, background: '#c0c0c0' }}>
-              <p style={{ fontSize: 11, marginBottom: 8, color: '#000' }}>
-                {format(new Date(), 'EEEE, MMMM d, yyyy')}
-              </p>
-              <StyledTextArea
-                value={noteText}
-                onChange={(e) => setNoteText(e.target.value)}
-                placeholder="What did you accomplish today?"
-                autoFocus
-              />
-              <div style={{ marginTop: 8 }}>
-                <Button
-                  primary
-                  fullWidth
-                  onClick={handleSaveNote}
-                  disabled={saving || !noteText.trim()}
-                >
-                  {saving ? 'Saving...' : 'Save Note'}
-                </Button>
-              </div>
-            </div>
+            <PopupContent>
+              <FormRow>
+                <FormLabel>Goal Title</FormLabel>
+                <StyledInput
+                  value={newGoalTitle}
+                  onChange={(e) => setNewGoalTitle(e.target.value)}
+                  placeholder="e.g., Save $1000"
+                  autoFocus
+                />
+              </FormRow>
+              <FormRow>
+                <FormLabel>Target Value</FormLabel>
+                <StyledInput
+                  type="number"
+                  value={newGoalTarget}
+                  onChange={(e) => setNewGoalTarget(e.target.value)}
+                  placeholder="e.g., 1000"
+                />
+              </FormRow>
+              <Button
+                primary
+                fullWidth
+                onClick={handleAddGoal}
+                disabled={saving || !newGoalTitle.trim()}
+              >
+                {saving ? 'Saving...' : 'Add Goal'}
+              </Button>
+            </PopupContent>
+          </PopupWindow>
+        </PopupOverlay>
+      )}
+
+      {/* Add Accomplishment Popup */}
+      {showAddAccomplishment && (
+        <PopupOverlay onClick={() => setShowAddAccomplishment(false)}>
+          <PopupWindow onClick={(e) => e.stopPropagation()}>
+            <TitleBar>
+              <span>🏆 Add Accomplishment</span>
+              <TitleBarButton size="sm" onClick={() => setShowAddAccomplishment(false)}>
+                ✕
+              </TitleBarButton>
+            </TitleBar>
+            <PopupContent>
+              <FormRow>
+                <FormLabel>What did you accomplish?</FormLabel>
+                <StyledTextArea
+                  value={newAccomplishment}
+                  onChange={(e) => setNewAccomplishment(e.target.value)}
+                  placeholder="e.g., Completed a 5K run!"
+                  autoFocus
+                />
+              </FormRow>
+              <Button
+                primary
+                fullWidth
+                onClick={handleAddAccomplishment}
+                disabled={saving || !newAccomplishment.trim()}
+              >
+                {saving ? 'Saving...' : 'Add Win!'}
+              </Button>
+            </PopupContent>
           </PopupWindow>
         </PopupOverlay>
       )}

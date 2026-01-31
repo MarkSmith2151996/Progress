@@ -19,21 +19,16 @@ import { useRouter } from 'next/navigation';
 import { useLogStore } from '@/stores/logStore';
 import {
   MobileContainer,
-  Header,
-  AppTitle,
-  VersionBadge,
   MainWindow,
   ContentArea,
   TitleBar,
   TitleBarButton,
-  InsetPanel,
-  FloatingActionButton,
-  Taskbar,
-  TaskbarButton,
-  TaskbarIcon,
   PopupOverlay,
   PopupWindow,
+  PopupContent,
   StyledTextArea,
+  FormRow,
+  FormLabel,
 } from '@/components/mobile/MobileShared';
 
 // ============================================
@@ -54,12 +49,24 @@ const MonthTitle = styled.span`
   font-weight: bold;
 `;
 
+const CalendarWrapper = styled.div`
+  flex: 1;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  background: #fff;
+  margin: 4px;
+  border: 2px solid;
+  border-color: #808080 #dfdfdf #dfdfdf #808080;
+  box-shadow: inset 1px 1px 0 #0a0a0a;
+`;
+
 const CalendarGrid = styled.div`
   display: grid;
   grid-template-columns: repeat(7, 1fr);
   gap: 1px;
   background: #808080;
-  padding: 1px;
+  flex: 1;
 `;
 
 const DayHeader = styled.div`
@@ -68,11 +75,9 @@ const DayHeader = styled.div`
   font-weight: bold;
   padding: 6px 2px;
   background: #c0c0c0;
-  border-bottom: 2px solid #808080;
 `;
 
 const DayCell = styled.div<{ $isToday: boolean; $isCurrentMonth: boolean; $hasData: boolean }>`
-  aspect-ratio: 1;
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -84,8 +89,8 @@ const DayCell = styled.div<{ $isToday: boolean; $isCurrentMonth: boolean; $hasDa
     props.$hasData ? '#90EE90' :
     props.$isCurrentMonth ? '#fff' : '#e0e0e0'};
   color: ${(props) => props.$isToday ? '#fff' : '#000'};
-  min-height: 44px;
-  border: 1px solid transparent;
+  min-height: 40px;
+  padding: 4px;
 
   &:active {
     background: #000080;
@@ -95,11 +100,31 @@ const DayCell = styled.div<{ $isToday: boolean; $isCurrentMonth: boolean; $hasDa
 
 const DayNumber = styled.span`
   font-weight: bold;
+  font-size: 12px;
 `;
 
 const DayIndicator = styled.span`
-  font-size: 8px;
+  font-size: 6px;
   color: #008000;
+  margin-top: 2px;
+`;
+
+const Legend = styled.div`
+  padding: 8px;
+  background: #c0c0c0;
+  font-size: 10px;
+  display: flex;
+  gap: 16px;
+  justify-content: center;
+  border-top: 1px solid #808080;
+`;
+
+const BackButton = styled(Button)`
+  position: fixed;
+  bottom: 16px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 100;
 `;
 
 const DAYS = ['Su', 'Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa'];
@@ -181,21 +206,13 @@ export default function MobileCalendarPage() {
   return (
     <>
       <MobileContainer>
-        {/* Header */}
-        <Header>
-          <AppTitle>
-            Progress95
-            <VersionBadge>v1.0</VersionBadge>
-          </AppTitle>
-          <Button size="sm" onClick={() => router.push('/mobile')}>
-            Back
-          </Button>
-        </Header>
-
         {/* Main Window */}
-        <MainWindow>
+        <MainWindow style={{ marginBottom: 70 }}>
           <TitleBar>
             <span>📅 Calendar</span>
+            <TitleBarButton size="sm" onClick={() => router.push('/mobile')}>
+              ✕
+            </TitleBarButton>
           </TitleBar>
 
           <ContentArea>
@@ -211,7 +228,7 @@ export default function MobileCalendarPage() {
             </CalendarNav>
 
             {/* Calendar Grid */}
-            <InsetPanel style={{ margin: 4, padding: 0, overflow: 'hidden' }}>
+            <CalendarWrapper>
               <CalendarGrid>
                 {/* Day Headers */}
                 {DAYS.map((day) => (
@@ -239,42 +256,20 @@ export default function MobileCalendarPage() {
                   );
                 })}
               </CalendarGrid>
-            </InsetPanel>
+            </CalendarWrapper>
 
             {/* Legend */}
-            <div style={{ padding: '8px', background: '#c0c0c0', fontSize: 10, display: 'flex', gap: 16, justifyContent: 'center' }}>
+            <Legend>
               <span><span style={{ color: '#000080' }}>■</span> Today</span>
               <span><span style={{ color: '#90EE90' }}>■</span> Has data</span>
-            </div>
+            </Legend>
           </ContentArea>
         </MainWindow>
 
-        {/* Floating Action Button */}
-        <FloatingActionButton onClick={() => {
-          setSelectedDay(format(new Date(), 'yyyy-MM-dd'));
-          setShowQuickLog(true);
-        }}>
-          📎
-        </FloatingActionButton>
-
-        {/* Taskbar */}
-        <Taskbar>
-          <TaskbarButton onClick={() => router.push('/mobile')}>
-            <TaskbarIcon>🏠</TaskbarIcon>
-          </TaskbarButton>
-          <TaskbarButton $active>
-            <TaskbarIcon>📅</TaskbarIcon>
-          </TaskbarButton>
-          <TaskbarButton onClick={() => {
-            setSelectedDay(format(new Date(), 'yyyy-MM-dd'));
-            setShowQuickLog(true);
-          }}>
-            <TaskbarIcon>📝</TaskbarIcon>
-          </TaskbarButton>
-          <TaskbarButton onClick={() => router.push('/mobile/settings')}>
-            <TaskbarIcon>⚙️</TaskbarIcon>
-          </TaskbarButton>
-        </Taskbar>
+        {/* Back Button */}
+        <BackButton onClick={() => router.push('/mobile')}>
+          ← Back to Home
+        </BackButton>
       </MobileContainer>
 
       {/* Day Detail Popup */}
@@ -283,9 +278,9 @@ export default function MobileCalendarPage() {
           <PopupWindow onClick={(e) => e.stopPropagation()}>
             <TitleBar>
               <span>📅 {format(new Date(selectedDay), 'EEE, MMM d')}</span>
-              <TitleBarButton onClick={() => setSelectedDay(null)}>✕</TitleBarButton>
+              <TitleBarButton size="sm" onClick={() => setSelectedDay(null)}>✕</TitleBarButton>
             </TitleBar>
-            <div style={{ padding: 12, background: '#c0c0c0' }}>
+            <PopupContent>
               {dayData?.log ? (
                 <>
                   <div style={{
@@ -298,7 +293,7 @@ export default function MobileCalendarPage() {
                     border: '2px inset #808080'
                   }}>
                     <div style={{ textAlign: 'center' }}>
-                      <div style={{ fontSize: 18 }}>{'⚡'.repeat(dayData.log.energy_level || 0)}</div>
+                      <div style={{ fontSize: 18 }}>{'⚡'.repeat(Math.min(dayData.log.energy_level || 0, 5))}</div>
                       <div style={{ fontSize: 9, color: '#808080' }}>Energy</div>
                     </div>
                     <div style={{ textAlign: 'center' }}>
@@ -306,7 +301,7 @@ export default function MobileCalendarPage() {
                       <div style={{ fontSize: 9, color: '#808080' }}>Sleep</div>
                     </div>
                     <div style={{ textAlign: 'center' }}>
-                      <div style={{ fontSize: 18 }}>{'⭐'.repeat(dayData.log.overall_rating || 0)}</div>
+                      <div style={{ fontSize: 18 }}>{'⭐'.repeat(Math.min(dayData.log.overall_rating || 0, 5))}</div>
                       <div style={{ fontSize: 9, color: '#808080' }}>Rating</div>
                     </div>
                   </div>
@@ -365,7 +360,7 @@ export default function MobileCalendarPage() {
                   Close
                 </Button>
               </div>
-            </div>
+            </PopupContent>
           </PopupWindow>
         </PopupOverlay>
       )}
@@ -376,16 +371,19 @@ export default function MobileCalendarPage() {
           <PopupWindow onClick={(e) => e.stopPropagation()}>
             <TitleBar>
               <span>📝 Note for {format(new Date(selectedDay), 'MMM d')}</span>
-              <TitleBarButton onClick={() => { setShowQuickLog(false); setSelectedDay(null); }}>✕</TitleBarButton>
+              <TitleBarButton size="sm" onClick={() => { setShowQuickLog(false); setSelectedDay(null); }}>✕</TitleBarButton>
             </TitleBar>
-            <div style={{ padding: 12, background: '#c0c0c0' }}>
-              <StyledTextArea
-                value={noteText}
-                onChange={(e) => setNoteText(e.target.value)}
-                placeholder="What did you accomplish?"
-                autoFocus
-              />
-              <div style={{ marginTop: 8, display: 'flex', gap: 8 }}>
+            <PopupContent>
+              <FormRow>
+                <FormLabel>What did you accomplish?</FormLabel>
+                <StyledTextArea
+                  value={noteText}
+                  onChange={(e) => setNoteText(e.target.value)}
+                  placeholder="Write your notes here..."
+                  autoFocus
+                />
+              </FormRow>
+              <div style={{ display: 'flex', gap: 8 }}>
                 <Button
                   primary
                   style={{ flex: 1 }}
@@ -398,7 +396,7 @@ export default function MobileCalendarPage() {
                   Cancel
                 </Button>
               </div>
-            </div>
+            </PopupContent>
           </PopupWindow>
         </PopupOverlay>
       )}

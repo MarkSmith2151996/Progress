@@ -8,67 +8,43 @@ import { useLogStore } from '@/stores/logStore';
 import { useGoalStore } from '@/stores/goalStore';
 import {
   MobileContainer,
-  Header,
-  AppTitle,
-  VersionBadge,
   MainWindow,
   ContentArea,
   TitleBar,
   TitleBarButton,
-  InsetPanel,
-  StyledGroupBox,
-  GroupBoxLabel,
-  IconBadge,
-  StyledInput,
-  AddFormRow,
+  ScrollArea,
+  SectionHeader,
+  ListContainer,
+  ListItem,
+  ListItemText,
   EmptyState,
   EmptyStateIcon,
   EmptyStateTitle,
   EmptyStateText,
-  FloatingActionButton,
-  Taskbar,
-  TaskbarButton,
-  TaskbarIcon,
   PopupOverlay,
   PopupWindow,
+  PopupContent,
+  StyledInput,
+  FormRow,
+  FormLabel,
 } from '@/components/mobile/MobileShared';
 
 // ============================================
 // SETTINGS SPECIFIC STYLES
 // ============================================
 
-const ScrollContent = styled.div`
-  flex: 1;
-  overflow-y: auto;
-  padding-bottom: 20px;
-`;
-
-const SectionTitle = styled.div`
-  background: linear-gradient(90deg, #000080, #1084d0);
-  color: #fff;
-  padding: 6px 8px;
-  font-weight: bold;
-  font-size: 12px;
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  margin: 8px 4px 0;
-`;
-
-const ListContainer = styled.div`
+const SettingsList = styled.div`
   background: #fff;
   border: 2px solid;
   border-color: #808080 #dfdfdf #dfdfdf #808080;
-  margin: 0 4px 8px;
-  max-height: 180px;
-  overflow-y: auto;
+  margin: 4px 0;
 `;
 
-const ListItem = styled.div`
+const SettingsItem = styled.div`
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: 10px 8px;
+  padding: 12px 8px;
   border-bottom: 1px solid #e0e0e0;
   min-height: 44px;
 
@@ -86,6 +62,20 @@ const ItemContent = styled.div`
   align-items: center;
   flex: 1;
   min-width: 0;
+  gap: 8px;
+`;
+
+const ItemIcon = styled.span`
+  width: 24px;
+  height: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: ${props => props.color || '#4ecdc4'};
+  border: 1px solid #000;
+  border-radius: 2px;
+  font-size: 12px;
+  flex-shrink: 0;
 `;
 
 const ItemText = styled.span`
@@ -96,28 +86,19 @@ const ItemText = styled.span`
 `;
 
 const DeleteButton = styled(Button)`
-  min-width: 36px;
-  min-height: 36px;
+  min-width: 32px;
+  min-height: 32px;
   padding: 0;
-  font-size: 14px;
+  font-size: 12px;
   color: #800000;
   margin-left: 8px;
-`;
-
-const AddRow = styled.div`
-  display: flex;
-  gap: 4px;
-  padding: 8px;
-  background: #c0c0c0;
-  border-top: 1px solid #808080;
-  margin: 0 4px 8px;
 `;
 
 const AboutSection = styled.div`
   background: #c0c0c0;
   border: 2px solid;
   border-color: #808080 #dfdfdf #dfdfdf #808080;
-  margin: 8px 4px;
+  margin: 8px 0;
   padding: 12px;
 `;
 
@@ -135,6 +116,14 @@ const AboutText = styled.p`
   color: #000;
   margin: 4px 0;
   line-height: 1.4;
+`;
+
+const BackButton = styled(Button)`
+  position: fixed;
+  bottom: 16px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 100;
 `;
 
 const habitColors = [
@@ -261,109 +250,93 @@ export default function MobileSettingsPage() {
   return (
     <>
       <MobileContainer>
-        {/* Header */}
-        <Header>
-          <AppTitle>
-            Progress95
-            <VersionBadge>v1.0</VersionBadge>
-          </AppTitle>
-          <Button size="sm" onClick={() => router.push('/mobile')}>
-            Back
-          </Button>
-        </Header>
-
         {/* Main Window */}
-        <MainWindow>
+        <MainWindow style={{ marginBottom: 70 }}>
           <TitleBar>
             <span>⚙️ Settings</span>
+            <TitleBarButton size="sm" onClick={() => router.push('/mobile')}>
+              ✕
+            </TitleBarButton>
           </TitleBar>
 
           <ContentArea>
-            <ScrollContent>
+            <ScrollArea>
               {/* HABITS SECTION */}
-              <SectionTitle>
+              <SectionHeader>
                 💪 Habits
-                <Button
-                  size="sm"
-                  style={{ marginLeft: 'auto', fontSize: 10 }}
-                  onClick={() => setShowAddHabit(true)}
-                >
-                  + Add
-                </Button>
-              </SectionTitle>
-              <ListContainer>
+              </SectionHeader>
+              <SettingsList>
                 {activeHabits.length === 0 ? (
                   <div style={{ padding: 20, textAlign: 'center' }}>
                     <div style={{ fontSize: 32, marginBottom: 8 }}>📋</div>
                     <div style={{ fontSize: 12, color: '#808080' }}>No habits yet</div>
-                    <Button
-                      size="sm"
-                      style={{ marginTop: 8 }}
-                      onClick={() => setShowAddHabit(true)}
-                    >
-                      + Add First Habit
-                    </Button>
                   </div>
                 ) : (
                   activeHabits.map((habit, index) => (
-                    <ListItem key={habit.habit_id}>
+                    <SettingsItem key={habit.habit_id}>
                       <ItemContent>
-                        <IconBadge $color={habitColors[index % habitColors.length]}>
+                        <ItemIcon color={habitColors[index % habitColors.length]}>
                           {getHabitEmoji(habit.name)}
-                        </IconBadge>
+                        </ItemIcon>
                         <ItemText>{habit.name}</ItemText>
                       </ItemContent>
                       <DeleteButton onClick={() => handleDeleteHabit(habit.habit_id)}>
                         ✕
                       </DeleteButton>
-                    </ListItem>
+                    </SettingsItem>
                   ))
                 )}
-              </ListContainer>
+              </SettingsList>
+              <Button fullWidth onClick={() => setShowAddHabit(true)}>
+                + Add Habit
+              </Button>
 
               {/* GOALS SECTION */}
-              <SectionTitle>
+              <SectionHeader style={{ marginTop: 16 }}>
                 🎯 Goals
-                <Button
-                  size="sm"
-                  style={{ marginLeft: 'auto', fontSize: 10 }}
-                  onClick={() => setShowAddGoal(true)}
-                >
-                  + Add
-                </Button>
-              </SectionTitle>
-              <ListContainer>
+              </SectionHeader>
+              <SettingsList>
                 {activeGoals.length === 0 ? (
                   <div style={{ padding: 20, textAlign: 'center' }}>
                     <div style={{ fontSize: 32, marginBottom: 8 }}>🎯</div>
                     <div style={{ fontSize: 12, color: '#808080' }}>No goals yet</div>
-                    <Button
-                      size="sm"
-                      style={{ marginTop: 8 }}
-                      onClick={() => setShowAddGoal(true)}
-                    >
-                      + Add First Goal
-                    </Button>
                   </div>
                 ) : (
                   activeGoals.map((goal) => (
-                    <ListItem key={goal.goal_id}>
+                    <SettingsItem key={goal.goal_id}>
                       <ItemContent>
-                        <IconBadge $color="#4ecdc4">🎯</IconBadge>
+                        <ItemIcon color="#4ecdc4">🎯</ItemIcon>
                         <ItemText>{goal.title}</ItemText>
                       </ItemContent>
                       <DeleteButton onClick={() => handleDeleteGoal(goal.goal_id)}>
                         ✕
                       </DeleteButton>
-                    </ListItem>
+                    </SettingsItem>
                   ))
                 )}
-              </ListContainer>
+              </SettingsList>
+              <Button fullWidth onClick={() => setShowAddGoal(true)}>
+                + Add Goal
+              </Button>
+
+              {/* NAVIGATION */}
+              <SectionHeader style={{ marginTop: 16 }}>
+                📍 Navigation
+              </SectionHeader>
+              <SettingsList>
+                <SettingsItem onClick={() => router.push('/mobile/calendar')} style={{ cursor: 'pointer' }}>
+                  <ItemContent>
+                    <ItemIcon color="#74b9ff">📅</ItemIcon>
+                    <ItemText>View Calendar</ItemText>
+                  </ItemContent>
+                  <span style={{ color: '#808080' }}>→</span>
+                </SettingsItem>
+              </SettingsList>
 
               {/* ABOUT SECTION */}
-              <SectionTitle>
+              <SectionHeader style={{ marginTop: 16 }}>
                 ℹ️ About
-              </SectionTitle>
+              </SectionHeader>
               <AboutSection>
                 <AboutTitle>Progress95</AboutTitle>
                 <AboutText>
@@ -386,30 +359,14 @@ export default function MobileSettingsPage() {
                   Built with ❤️ by Antonio
                 </div>
               </AboutSection>
-            </ScrollContent>
+            </ScrollArea>
           </ContentArea>
         </MainWindow>
 
-        {/* Floating Action Button */}
-        <FloatingActionButton onClick={() => setShowAddHabit(true)}>
-          📎
-        </FloatingActionButton>
-
-        {/* Taskbar */}
-        <Taskbar>
-          <TaskbarButton onClick={() => router.push('/mobile')}>
-            <TaskbarIcon>🏠</TaskbarIcon>
-          </TaskbarButton>
-          <TaskbarButton onClick={() => router.push('/mobile/calendar')}>
-            <TaskbarIcon>📅</TaskbarIcon>
-          </TaskbarButton>
-          <TaskbarButton onClick={() => setShowAddHabit(true)}>
-            <TaskbarIcon>📝</TaskbarIcon>
-          </TaskbarButton>
-          <TaskbarButton $active>
-            <TaskbarIcon>⚙️</TaskbarIcon>
-          </TaskbarButton>
-        </Taskbar>
+        {/* Back Button */}
+        <BackButton onClick={() => router.push('/mobile')}>
+          ← Back to Home
+        </BackButton>
       </MobileContainer>
 
       {/* Add Habit Popup */}
@@ -418,20 +375,20 @@ export default function MobileSettingsPage() {
           <PopupWindow onClick={(e) => e.stopPropagation()}>
             <TitleBar>
               <span>💪 Add New Habit</span>
-              <TitleBarButton onClick={() => setShowAddHabit(false)}>✕</TitleBarButton>
+              <TitleBarButton size="sm" onClick={() => setShowAddHabit(false)}>✕</TitleBarButton>
             </TitleBar>
-            <div style={{ padding: 12, background: '#c0c0c0' }}>
-              <p style={{ fontSize: 11, marginBottom: 8, color: '#000' }}>
-                What habit do you want to build?
-              </p>
-              <StyledInput
-                value={newHabit}
-                onChange={(e) => setNewHabit(e.target.value)}
-                placeholder="e.g., Go to gym, Read 30 min..."
-                autoFocus
-                onKeyDown={(e) => e.key === 'Enter' && handleAddHabit()}
-              />
-              <div style={{ marginTop: 12, display: 'flex', gap: 8 }}>
+            <PopupContent>
+              <FormRow>
+                <FormLabel>What habit do you want to build?</FormLabel>
+                <StyledInput
+                  value={newHabit}
+                  onChange={(e) => setNewHabit(e.target.value)}
+                  placeholder="e.g., Go to gym, Read 30 min..."
+                  autoFocus
+                  onKeyDown={(e) => e.key === 'Enter' && handleAddHabit()}
+                />
+              </FormRow>
+              <div style={{ display: 'flex', gap: 8 }}>
                 <Button
                   primary
                   style={{ flex: 1 }}
@@ -444,7 +401,7 @@ export default function MobileSettingsPage() {
                   Cancel
                 </Button>
               </div>
-            </div>
+            </PopupContent>
           </PopupWindow>
         </PopupOverlay>
       )}
@@ -455,20 +412,20 @@ export default function MobileSettingsPage() {
           <PopupWindow onClick={(e) => e.stopPropagation()}>
             <TitleBar>
               <span>🎯 Add New Goal</span>
-              <TitleBarButton onClick={() => setShowAddGoal(false)}>✕</TitleBarButton>
+              <TitleBarButton size="sm" onClick={() => setShowAddGoal(false)}>✕</TitleBarButton>
             </TitleBar>
-            <div style={{ padding: 12, background: '#c0c0c0' }}>
-              <p style={{ fontSize: 11, marginBottom: 8, color: '#000' }}>
-                What do you want to achieve?
-              </p>
-              <StyledInput
-                value={newGoal}
-                onChange={(e) => setNewGoal(e.target.value)}
-                placeholder="e.g., SAT 1500+, Save $1000..."
-                autoFocus
-                onKeyDown={(e) => e.key === 'Enter' && handleAddGoal()}
-              />
-              <div style={{ marginTop: 12, display: 'flex', gap: 8 }}>
+            <PopupContent>
+              <FormRow>
+                <FormLabel>What do you want to achieve?</FormLabel>
+                <StyledInput
+                  value={newGoal}
+                  onChange={(e) => setNewGoal(e.target.value)}
+                  placeholder="e.g., SAT 1500+, Save $1000..."
+                  autoFocus
+                  onKeyDown={(e) => e.key === 'Enter' && handleAddGoal()}
+                />
+              </FormRow>
+              <div style={{ display: 'flex', gap: 8 }}>
                 <Button
                   primary
                   style={{ flex: 1 }}
@@ -481,7 +438,7 @@ export default function MobileSettingsPage() {
                   Cancel
                 </Button>
               </div>
-            </div>
+            </PopupContent>
           </PopupWindow>
         </PopupOverlay>
       )}
