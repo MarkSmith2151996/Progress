@@ -161,7 +161,7 @@ export default function MobileSettingsPage() {
   const [showAddHabit, setShowAddHabit] = useState(false);
   const [showAddGoal, setShowAddGoal] = useState(false);
 
-  const { habits, fetchData } = useLogStore();
+  const { habits, fetchData, addHabit, deleteHabit } = useLogStore();
   const { goals, fetchGoals, saveGoal, deleteGoal } = useGoalStore();
 
   useEffect(() => {
@@ -177,24 +177,19 @@ export default function MobileSettingsPage() {
     setAddingHabit(true);
 
     try {
-      await fetch('/api/habits', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          habit_id: `habit_${Date.now()}`,
-          name: newHabit.trim(),
-          active: true,
-          streak: 0,
-          best_streak: 0,
-          target_minutes: null,
-          days_active: ['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun'],
-          sort_order: habits.length,
-          created_at: new Date().toISOString(),
-        }),
+      await addHabit({
+        habit_id: `habit_${Date.now()}`,
+        name: newHabit.trim(),
+        active: true,
+        streak: 0,
+        best_streak: 0,
+        target_minutes: null,
+        days_active: ['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun'],
+        sort_order: habits.length,
+        created_at: new Date().toISOString(),
       });
       setNewHabit('');
       setShowAddHabit(false);
-      fetchData();
     } catch (err) {
       console.error('Failed to add habit:', err);
     } finally {
@@ -204,8 +199,7 @@ export default function MobileSettingsPage() {
 
   const handleDeleteHabit = async (habitId: string) => {
     try {
-      await fetch(`/api/habits?id=${habitId}`, { method: 'DELETE' });
-      fetchData();
+      await deleteHabit(habitId);
     } catch (err) {
       console.error('Failed to delete habit:', err);
     }

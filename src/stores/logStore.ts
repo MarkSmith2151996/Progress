@@ -9,6 +9,7 @@ import {
 import { enrichHabitWithStatus, isHabitActiveToday, getToday } from '@/lib/metrics';
 import { syncHabitComplete, logActivity } from '@/lib/coachSync';
 import { debug, debugError, debugSuccess, debugWarn } from '@/lib/debug';
+import * as browserStorage from '@/lib/browserStorage';
 
 interface LogState {
   dailyLogs: DailyLog[];
@@ -28,6 +29,8 @@ interface LogState {
   saveTask: (task: Task) => Promise<void>;
   saveHabitCompletion: (completion: HabitCompletion) => Promise<void>;
   toggleHabit: (habitId: string, date: string) => Promise<void>;
+  addHabit: (habit: Habit) => Promise<void>;
+  deleteHabit: (habitId: string) => Promise<void>;
 
   fetchData: () => Promise<void>;
 
@@ -38,6 +41,13 @@ interface LogState {
   getTasksByWeek: (weekStart: string, weekEnd: string) => Task[];
   getTodayHabits: () => HabitWithStatus[];
   getHabitsByDate: (date: string) => HabitWithStatus[];
+}
+
+// Check if we should use browser storage
+function shouldUseBrowserStorage(): boolean {
+  if (typeof window === 'undefined') return false;
+  const hostname = window.location.hostname;
+  return hostname.includes('vercel.app') || hostname.includes('.vercel.app');
 }
 
 export const useLogStore = create<LogState>((set, get) => ({
@@ -72,20 +82,26 @@ export const useLogStore = create<LogState>((set, get) => ({
     debug('LogStore', 'saveDailyLog called', { date: log.date, energy: log.energy_level });
 
     try {
-      debug('LogStore', 'Calling /api/daily-logs POST...');
-      const response = await fetch('/api/daily-logs', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(log),
-      });
+      // Use browser storage on Vercel
+      if (shouldUseBrowserStorage()) {
+        browserStorage.saveDailyLog(log);
+        debugSuccess('LogStore', 'Daily log saved to browser storage');
+      } else {
+        debug('LogStore', 'Calling /api/daily-logs POST...');
+        const response = await fetch('/api/daily-logs', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(log),
+        });
 
-      if (!response.ok) {
-        const errorText = await response.text();
-        debugError('LogStore', 'API returned error', { status: response.status, body: errorText });
-        throw new Error(`Failed to save daily log: ${response.status}`);
+        if (!response.ok) {
+          const errorText = await response.text();
+          debugError('LogStore', 'API returned error', { status: response.status, body: errorText });
+          throw new Error(`Failed to save daily log: ${response.status}`);
+        }
+
+        debugSuccess('LogStore', 'API save successful');
       }
-
-      debugSuccess('LogStore', 'API save successful');
 
       set((state) => {
         const existingIndex = state.dailyLogs.findIndex(
@@ -119,20 +135,26 @@ export const useLogStore = create<LogState>((set, get) => ({
     debug('LogStore', 'saveTask called', { taskId: task.task_id, description: task.description });
 
     try {
-      debug('LogStore', 'Calling /api/tasks POST...');
-      const response = await fetch('/api/tasks', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(task),
-      });
+      // Use browser storage on Vercel
+      if (shouldUseBrowserStorage()) {
+        browserStorage.saveTask(task);
+        debugSuccess('LogStore', 'Task saved to browser storage');
+      } else {
+        debug('LogStore', 'Calling /api/tasks POST...');
+        const response = await fetch('/api/tasks', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(task),
+        });
 
-      if (!response.ok) {
-        const errorText = await response.text();
-        debugError('LogStore', 'Task API returned error', { status: response.status, body: errorText });
-        throw new Error(`Failed to save task: ${response.status}`);
+        if (!response.ok) {
+          const errorText = await response.text();
+          debugError('LogStore', 'Task API returned error', { status: response.status, body: errorText });
+          throw new Error(`Failed to save task: ${response.status}`);
+        }
+
+        debugSuccess('LogStore', 'Task API save successful');
       }
-
-      debugSuccess('LogStore', 'Task API save successful');
 
       set((state) => {
         const existingIndex = state.tasks.findIndex(
@@ -160,20 +182,26 @@ export const useLogStore = create<LogState>((set, get) => ({
     debug('LogStore', 'saveHabitCompletion called', { habitId: completion.habit_id, completed: completion.completed });
 
     try {
-      debug('LogStore', 'Calling /api/habit-completions POST...');
-      const response = await fetch('/api/habit-completions', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(completion),
-      });
+      // Use browser storage on Vercel
+      if (shouldUseBrowserStorage()) {
+        browserStorage.saveHabitCompletion(completion);
+        debugSuccess('LogStore', 'Habit completion saved to browser storage');
+      } else {
+        debug('LogStore', 'Calling /api/habit-completions POST...');
+        const response = await fetch('/api/habit-completions', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(completion),
+        });
 
-      if (!response.ok) {
-        const errorText = await response.text();
-        debugError('LogStore', 'Habit completion API returned error', { status: response.status, body: errorText });
-        throw new Error(`Failed to save habit completion: ${response.status}`);
+        if (!response.ok) {
+          const errorText = await response.text();
+          debugError('LogStore', 'Habit completion API returned error', { status: response.status, body: errorText });
+          throw new Error(`Failed to save habit completion: ${response.status}`);
+        }
+
+        debugSuccess('LogStore', 'Habit completion API save successful');
       }
-
-      debugSuccess('LogStore', 'Habit completion API save successful');
 
       set((state) => {
         const existingIndex = state.habitCompletions.findIndex(
@@ -231,56 +259,146 @@ export const useLogStore = create<LogState>((set, get) => ({
     debugSuccess('LogStore', 'toggleHabit completed');
   },
 
+  addHabit: async (habit) => {
+    debug('LogStore', 'addHabit called', { habitId: habit.habit_id, name: habit.name });
+
+    try {
+      // Use browser storage on Vercel
+      if (shouldUseBrowserStorage()) {
+        browserStorage.saveHabit(habit);
+        debugSuccess('LogStore', 'Habit saved to browser storage');
+      } else {
+        debug('LogStore', 'Calling /api/habits POST...');
+        const response = await fetch('/api/habits', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(habit),
+        });
+
+        if (!response.ok) {
+          const errorText = await response.text();
+          debugError('LogStore', 'Habits API returned error', { status: response.status, body: errorText });
+          throw new Error(`Failed to save habit: ${response.status}`);
+        }
+
+        debugSuccess('LogStore', 'Habits API save successful');
+      }
+
+      set((state) => ({
+        habits: [...state.habits, habit],
+        error: null,
+      }));
+
+      debugSuccess('LogStore', 'addHabit completed');
+    } catch (error: any) {
+      debugError('LogStore', 'addHabit failed', error);
+      set({ error: error.message });
+      throw error;
+    }
+  },
+
+  deleteHabit: async (habitId) => {
+    debug('LogStore', 'deleteHabit called', { habitId });
+
+    try {
+      // Use browser storage on Vercel
+      if (shouldUseBrowserStorage()) {
+        browserStorage.deleteHabit(habitId);
+        debugSuccess('LogStore', 'Habit deleted from browser storage');
+      } else {
+        debug('LogStore', 'Calling /api/habits DELETE...');
+        const response = await fetch(`/api/habits?id=${habitId}`, {
+          method: 'DELETE',
+        });
+
+        if (!response.ok) {
+          debugWarn('LogStore', 'Habits API delete returned non-OK', { status: response.status });
+        }
+
+        debugSuccess('LogStore', 'Habits API delete successful');
+      }
+
+      set((state) => ({
+        habits: state.habits.filter((h) => h.habit_id !== habitId),
+        error: null,
+      }));
+
+      debugSuccess('LogStore', 'deleteHabit completed');
+    } catch (error: any) {
+      debugError('LogStore', 'deleteHabit failed', error);
+      set({ error: error.message });
+    }
+  },
+
   fetchData: async () => {
     debug('LogStore', 'fetchData called');
     set({ isLoading: true, error: null });
 
     try {
-      debug('LogStore', 'Fetching all data from APIs...');
-      const [logsRes, tasksRes, habitsRes, completionsRes] = await Promise.all([
-        fetch('/api/daily-logs'),
-        fetch('/api/tasks'),
-        fetch('/api/habits'),
-        fetch('/api/habit-completions'),
-      ]);
+      let dailyLogs: DailyLog[] = [];
+      let tasks: Task[] = [];
+      let habits: Habit[] = [];
+      let habitCompletions: HabitCompletion[] = [];
 
-      debug('LogStore', 'API responses received', {
-        logsOk: logsRes.ok,
-        tasksOk: tasksRes.ok,
-        habitsOk: habitsRes.ok,
-        completionsOk: completionsRes.ok
-      });
-
-      if (!logsRes.ok || !tasksRes.ok || !habitsRes.ok || !completionsRes.ok) {
-        const errors = [];
-        if (!logsRes.ok) errors.push(`logs: ${logsRes.status}`);
-        if (!tasksRes.ok) errors.push(`tasks: ${tasksRes.status}`);
-        if (!habitsRes.ok) errors.push(`habits: ${habitsRes.status}`);
-        if (!completionsRes.ok) errors.push(`completions: ${completionsRes.status}`);
-        debugError('LogStore', 'Some APIs failed', errors);
-        throw new Error(`Failed to fetch data: ${errors.join(', ')}`);
-      }
-
-      const [logsData, tasksData, habitsData, completionsData] =
-        await Promise.all([
-          logsRes.json(),
-          tasksRes.json(),
-          habitsRes.json(),
-          completionsRes.json(),
+      // Use browser storage on Vercel
+      if (shouldUseBrowserStorage()) {
+        debug('LogStore', 'Using browser storage');
+        dailyLogs = browserStorage.getDailyLogs();
+        tasks = browserStorage.getTasks();
+        habits = browserStorage.getHabits();
+        habitCompletions = browserStorage.getHabitCompletions();
+      } else {
+        debug('LogStore', 'Fetching all data from APIs...');
+        const [logsRes, tasksRes, habitsRes, completionsRes] = await Promise.all([
+          fetch('/api/daily-logs'),
+          fetch('/api/tasks'),
+          fetch('/api/habits'),
+          fetch('/api/habit-completions'),
         ]);
 
-      debug('LogStore', 'Data parsed', {
-        logs: logsData.logs?.length || 0,
-        tasks: tasksData.tasks?.length || 0,
-        habits: habitsData.habits?.length || 0,
-        completions: completionsData.completions?.length || 0
+        debug('LogStore', 'API responses received', {
+          logsOk: logsRes.ok,
+          tasksOk: tasksRes.ok,
+          habitsOk: habitsRes.ok,
+          completionsOk: completionsRes.ok
+        });
+
+        if (!logsRes.ok || !tasksRes.ok || !habitsRes.ok || !completionsRes.ok) {
+          const errors = [];
+          if (!logsRes.ok) errors.push(`logs: ${logsRes.status}`);
+          if (!tasksRes.ok) errors.push(`tasks: ${tasksRes.status}`);
+          if (!habitsRes.ok) errors.push(`habits: ${habitsRes.status}`);
+          if (!completionsRes.ok) errors.push(`completions: ${completionsRes.status}`);
+          debugError('LogStore', 'Some APIs failed', errors);
+          throw new Error(`Failed to fetch data: ${errors.join(', ')}`);
+        }
+
+        const [logsData, tasksData, habitsData, completionsData] =
+          await Promise.all([
+            logsRes.json(),
+            tasksRes.json(),
+            habitsRes.json(),
+            completionsRes.json(),
+          ]);
+
+        dailyLogs = logsData.logs || [];
+        tasks = tasksData.tasks || [];
+        habits = habitsData.habits || [];
+        habitCompletions = completionsData.completions || [];
+      }
+
+      debug('LogStore', 'Data loaded', {
+        logs: dailyLogs.length,
+        tasks: tasks.length,
+        habits: habits.length,
+        completions: habitCompletions.length
       });
 
       set({
-        dailyLogs: logsData.logs || [],
-        tasks: tasksData.tasks || [],
-        habits: habitsData.habits || [],
-        habitCompletions: completionsData.completions || [],
+        dailyLogs,
+        tasks,
+        habits,
+        habitCompletions,
         isLoading: false,
         error: null,
       });
