@@ -325,6 +325,40 @@ export default function MobileSettingsPage() {
                 </SettingsItem>
               </SettingsList>
 
+              {/* DATA EXPORT */}
+              <SectionHeader style={{ marginTop: 16 }}>
+                💾 Data Management
+              </SectionHeader>
+              <SettingsList>
+                <SettingsItem>
+                  <ItemContent>
+                    <ItemIcon color="#00b894">📤</ItemIcon>
+                    <ItemText>Export Local Data</ItemText>
+                  </ItemContent>
+                  <Button
+                    size="sm"
+                    onClick={() => {
+                      const data = {
+                        goals: JSON.parse(localStorage.getItem('progress95_goals') || '[]'),
+                        habits: JSON.parse(localStorage.getItem('progress95_habits') || '[]'),
+                        dailyLogs: JSON.parse(localStorage.getItem('progress95_dailyLogs') || '[]'),
+                        tasks: JSON.parse(localStorage.getItem('progress95_tasks') || '[]'),
+                        habitCompletions: JSON.parse(localStorage.getItem('progress95_habitCompletions') || '[]'),
+                      };
+                      const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+                      const url = URL.createObjectURL(blob);
+                      const a = document.createElement('a');
+                      a.href = url;
+                      a.download = 'progress95-export.json';
+                      a.click();
+                      URL.revokeObjectURL(url);
+                    }}
+                  >
+                    Export
+                  </Button>
+                </SettingsItem>
+              </SettingsList>
+
               {/* ABOUT SECTION */}
               <SectionHeader style={{ marginTop: 16 }}>
                 ℹ️ About
