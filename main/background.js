@@ -4,14 +4,22 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
 };
 Object.defineProperty(exports, "__esModule", { value: true });
 const electron_1 = require("electron");
-const electron_serve_1 = __importDefault(require("electron-serve"));
 const path_1 = __importDefault(require("path"));
 const child_process_1 = require("child_process");
 const fs_1 = __importDefault(require("fs"));
-const isProd = process.env.NODE_ENV === 'production';
+const http_1 = __importDefault(require("http"));
+const env_loader_1 = require("./env-loader");
+// Use app.isPackaged to reliably detect production mode
+// This is true when running from a packaged .exe, false when running with `electron .`
+const isProd = electron_1.app.isPackaged;
+console.log(`[Electron] isProd: ${isProd}, isPackaged: ${electron_1.app.isPackaged}`);
+// Load environment variables early
 if (isProd) {
-    (0, electron_serve_1.default)({ directory: 'out' });
+    (0, env_loader_1.initializeEnv)();
 }
+// Server process reference (for cleanup)
+let serverProcess = null;
+let serverPort = 3000;
 let mainWindow = null;
 // Data directory for context.json
 const DATA_DIR = path_1.default.join(electron_1.app.getPath('userData'), 'data');
@@ -153,6 +161,128 @@ PARSING RULES:
 
 Return ONLY valid JSON, no markdown or explanation.`;
 }
+// Find a free port
+function findFreePort(startPort) {
+    return new Promise((resolve, reject) => {
+        const server = http_1.default.createServer();
+        server.listen(startPort, () => {
+            const port = server.address().port;
+            server.close(() => resolve(port));
+        });
+        server.on('error', () => {
+            // Port in use, try next
+            resolve(findFreePort(startPort + 1));
+        });
+    });
+}
+// Load .env.local from standalone directory
+function loadStandaloneEnv(standaloneDir) {
+    const envPath = path_1.default.join(standaloneDir, '.env.local');
+    const envVars = {};
+    if (fs_1.default.existsSync(envPath)) {
+        console.log(`[Electron] Loading env from: ${envPath}`);
+        const content = fs_1.default.readFileSync(envPath, 'utf-8');
+        const lines = content.split('\n');
+        for (const line of lines) {
+            const trimmed = line.trim();
+            if (!trimmed || trimmed.startsWith('#'))
+                continue;
+            const eqIndex = trimmed.indexOf('=');
+            if (eqIndex > 0) {
+                const key = trimmed.substring(0, eqIndex).trim();
+                let value = trimmed.substring(eqIndex + 1).trim();
+                // Remove surrounding quotes
+                if ((value.startsWith('"') && value.endsWith('"')) ||
+                    (value.startsWith("'") && value.endsWith("'"))) {
+                    value = value.slice(1, -1);
+                }
+                // Convert escaped newlines to actual newlines
+                value = value.replace(/\\n/g, '\n');
+                envVars[key] = value;
+                console.log(`[Electron] Loaded env: ${key} (${value.length} chars)`);
+            }
+        }
+    }
+    else {
+        console.warn(`[Electron] No .env.local found at: ${envPath}`);
+    }
+    return envVars;
+}
+// Start the bundled Next.js server in production
+async function startNextServer() {
+    const port = await findFreePort(3000);
+    console.log(`[Electron] Starting Next.js server on port ${port}`);
+    // Path to the standalone server
+    const standaloneDir = path_1.default.join(process.resourcesPath, 'standalone');
+    const serverPath = path_1.default.join(standaloneDir, 'server.js');
+    console.log(`[Electron] Looking for server at: ${serverPath}`);
+    console.log(`[Electron] resourcesPath: ${process.resourcesPath}`);
+    if (!fs_1.default.existsSync(serverPath)) {
+        console.error(`[Electron] Server not found at: ${serverPath}`);
+        try {
+            const contents = fs_1.default.readdirSync(process.resourcesPath);
+            console.error(`[Electron] Contents of resourcesPath:`, contents);
+        }
+        catch (e) {
+            console.error(`[Electron] Could not read resourcesPath`);
+        }
+        throw new Error('Next.js server not found in bundle');
+    }
+    // Load credentials from .env.local in standalone folder
+    const standaloneEnv = loadStandaloneEnv(standaloneDir);
+    // Start the server process using Electron as Node.js
+    // ELECTRON_RUN_AS_NODE=1 makes Electron act like Node.js
+    serverProcess = (0, child_process_1.spawn)(process.execPath, [serverPath], {
+        cwd: standaloneDir,
+        env: {
+            ...process.env,
+            ...standaloneEnv, // Include credentials from .env.local
+            ELECTRON_RUN_AS_NODE: '1',
+            PORT: String(port),
+            NODE_ENV: 'production',
+            HOSTNAME: 'localhost',
+        },
+        stdio: ['ignore', 'pipe', 'pipe'],
+    });
+    serverProcess.stdout?.on('data', (data) => {
+        console.log(`[Next.js] ${data.toString().trim()}`);
+    });
+    serverProcess.stderr?.on('data', (data) => {
+        console.error(`[Next.js Error] ${data.toString().trim()}`);
+    });
+    serverProcess.on('error', (err) => {
+        console.error('[Electron] Failed to start Next.js server:', err);
+    });
+    serverProcess.on('exit', (code) => {
+        console.log(`[Electron] Next.js server exited with code ${code}`);
+        serverProcess = null;
+    });
+    // Wait for server to be ready
+    await waitForServer(port);
+    return port;
+}
+// Wait for the server to be ready
+function waitForServer(port, maxAttempts = 30) {
+    return new Promise((resolve, reject) => {
+        let attempts = 0;
+        const check = () => {
+            attempts++;
+            const req = http_1.default.request({ host: 'localhost', port, path: '/', method: 'HEAD', timeout: 1000 }, (res) => {
+                resolve();
+            });
+            req.on('error', () => {
+                if (attempts < maxAttempts) {
+                    setTimeout(check, 500);
+                }
+                else {
+                    reject(new Error('Server did not start in time'));
+                }
+            });
+            req.end();
+        };
+        check();
+    });
+}
 const createWindow = async () => {
     mainWindow = new electron_1.BrowserWindow({
         width: 1200,
@@ -169,10 +299,13 @@ const createWindow = async () => {
         backgroundColor: '#008080',
     });
     if (isProd) {
-        await mainWindow.loadURL('app://./');
+        // Production: load from bundled Next.js server
+        const url = `http://localhost:${serverPort}`;
+        console.log(`[Electron] Loading URL: ${url}`);
+        await mainWindow.loadURL(url);
     }
     else {
-        // Always use port 3000 - batch file ensures this is available
+        // Development: connect to external dev server
         const port = 3000;
         const url = `http://localhost:${port}`;
         console.log(`[Electron] Loading URL: ${url}`);
@@ -313,13 +446,39 @@ electron_1.ipcMain.handle('apply-parsed-items', async (_, items) => {
 electron_1.ipcMain.handle('get-data-path', async () => {
     return CONTEXT_FILE;
 });
-electron_1.app.on('ready', () => {
+electron_1.app.on('ready', async () => {
     ensureDataFile();
+    // In production, start the bundled Next.js server first
+    if (isProd) {
+        try {
+            serverPort = await startNextServer();
+        }
+        catch (error) {
+            console.error('[Electron] Failed to start server:', error);
+            // Show error window
+            const errorWindow = new electron_1.BrowserWindow({ width: 400, height: 200 });
+            errorWindow.loadURL(`data:text/html,<h1>Failed to start</h1><p>Could not start the application server.</p><pre>${error}</pre>`);
+            return;
+        }
+    }
     createWindow();
 });
 electron_1.app.on('window-all-closed', () => {
+    // Clean up server process
+    if (serverProcess) {
+        console.log('[Electron] Killing Next.js server');
+        serverProcess.kill();
+        serverProcess = null;
+    }
     if (process.platform !== 'darwin') {
         electron_1.app.quit();
+    }
+});
+electron_1.app.on('before-quit', () => {
+    // Ensure server is cleaned up
+    if (serverProcess) {
+        serverProcess.kill();
+        serverProcess = null;
     }
 });
 electron_1.app.on('activate', () => {

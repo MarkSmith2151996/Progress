@@ -5,10 +5,14 @@ import { syncGoal, deleteGoalFromCoach, syncGoalUpdate, fullContextSync, logActi
 import { debug, debugError, debugSuccess, debugWarn } from '@/lib/debug';
 import * as browserStorage from '@/lib/browserStorage';
 
+// Sync status type for tracking data source
+export type SyncStatus = 'synced' | 'offline' | 'syncing' | 'error';
+
 interface GoalState {
   goals: Goal[];
   isLoading: boolean;
   error: string | null;
+  syncStatus: SyncStatus;
 
   // Actions
   setGoals: (goals: Goal[]) => void;
@@ -17,6 +21,7 @@ interface GoalState {
   deleteGoal: (goalId: string) => Promise<void>;
   fetchGoals: () => Promise<void>;
   saveGoal: (goal: Goal) => Promise<void>;
+  setSyncStatus: (status: SyncStatus) => void;
 
   // Selectors
   getActiveGoals: () => GoalWithProgress[];
@@ -25,21 +30,20 @@ interface GoalState {
   getWeeklyChunks: (parentGoalId: string) => GoalWithProgress[];
 }
 
-// Check if we should use browser storage
-function shouldUseBrowserStorage(): boolean {
-  if (typeof window === 'undefined') return false;
-  const hostname = window.location.hostname;
-  return hostname.includes('vercel.app') || hostname.includes('.vercel.app');
-}
-
 export const useGoalStore = create<GoalState>((set, get) => ({
   goals: [],
   isLoading: false,
   error: null,
+  syncStatus: 'synced' as SyncStatus,
 
   setGoals: (goals) => {
     debug('GoalStore', 'setGoals called', { count: goals.length });
     set({ goals });
+  },
+
+  setSyncStatus: (syncStatus) => {
+    debug('GoalStore', 'setSyncStatus called', { syncStatus });
+    set({ syncStatus });
   },
 
   addGoal: (goal) => {
@@ -70,25 +74,27 @@ export const useGoalStore = create<GoalState>((set, get) => ({
       goals: state.goals.filter((g) => g.goal_id !== goalId),
     }));
 
-    // Use browser storage on Vercel
-    if (shouldUseBrowserStorage()) {
-      browserStorage.deleteGoal(goalId);
-      debugSuccess('GoalStore', 'Goal deleted from browser storage');
-    } else {
-      // Try to delete from API
-      try {
-        const response = await fetch('/api/goals', {
-          method: 'DELETE',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ goal_id: goalId }),
-        });
+    // Try API first, fall back to browser storage on failure
+    let usedBrowserStorage = false;
+    try {
+      debug('GoalStore', 'Trying API delete...');
+      const response = await fetch('/api/goals', {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ goal_id: goalId }),
+      });
 
-        if (!response.ok) {
-          debugWarn('GoalStore', 'API delete returned non-OK', { status: response.status });
-        }
-      } catch (err: any) {
-        debugWarn('GoalStore', 'API delete failed', err.message);
+      if (!response.ok) {
+        throw new Error(`API returned ${response.status}`);
       }
+      debugSuccess('GoalStore', 'Goal deleted via API');
+      set({ syncStatus: 'synced' });
+    } catch (err: any) {
+      debugWarn('GoalStore', 'API delete failed, using browser storage', err.message);
+      browserStorage.deleteGoal(goalId);
+      usedBrowserStorage = true;
+      set({ syncStatus: 'offline' });
+      debugSuccess('GoalStore', 'Goal deleted from browser storage (offline fallback)');
     }
 
     // Sync deletion to coach (non-blocking)
@@ -107,16 +113,14 @@ export const useGoalStore = create<GoalState>((set, get) => ({
 
   fetchGoals: async () => {
     debug('GoalStore', 'fetchGoals called');
-    set({ isLoading: true, error: null });
+    set({ isLoading: true, error: null, syncStatus: 'syncing' });
 
     try {
       let goals: Goal[] = [];
+      let usedBrowserStorage = false;
 
-      // Use browser storage on Vercel
-      if (shouldUseBrowserStorage()) {
-        debug('GoalStore', 'Using browser storage');
-        goals = browserStorage.getGoals();
-      } else {
+      // Try API first, fall back to browser storage on failure
+      try {
         debug('GoalStore', 'Calling /api/goals GET...');
         const response = await fetch('/api/goals');
 
@@ -128,11 +132,22 @@ export const useGoalStore = create<GoalState>((set, get) => ({
 
         const data = await response.json();
         goals = data.goals || [];
+        debugSuccess('GoalStore', 'Goals fetched from API (cloud sync)');
+      } catch (apiError: any) {
+        debugWarn('GoalStore', 'API failed, falling back to browser storage', apiError.message);
+        goals = browserStorage.getGoals();
+        usedBrowserStorage = true;
+        debug('GoalStore', 'Using browser storage (offline mode)');
       }
 
-      debug('GoalStore', 'Goals received', { count: goals.length });
+      debug('GoalStore', 'Goals received', { count: goals.length, source: usedBrowserStorage ? 'browser' : 'api' });
 
-      set({ goals, isLoading: false, error: null });
+      set({
+        goals,
+        isLoading: false,
+        error: null,
+        syncStatus: usedBrowserStorage ? 'offline' : 'synced'
+      });
 
       // Sync all goals to coach on fetch (non-blocking)
       const activeGoals = goals.filter((g: Goal) => g.status === 'active');
@@ -146,7 +161,7 @@ export const useGoalStore = create<GoalState>((set, get) => ({
       debugSuccess('GoalStore', 'fetchGoals completed');
     } catch (error: any) {
       debugError('GoalStore', 'fetchGoals failed', error);
-      set({ error: error.message, isLoading: false });
+      set({ error: error.message, isLoading: false, syncStatus: 'error' });
     }
   },
 
@@ -155,13 +170,10 @@ export const useGoalStore = create<GoalState>((set, get) => ({
 
     try {
       const isNew = !get().goals.find((g) => g.goal_id === goal.goal_id);
+      let usedBrowserStorage = false;
 
-      // Use browser storage on Vercel
-      if (shouldUseBrowserStorage()) {
-        debug('GoalStore', 'Using browser storage');
-        browserStorage.saveGoal(goal);
-        debugSuccess('GoalStore', 'Goal saved to browser storage');
-      } else {
+      // Try API first, fall back to browser storage on failure
+      try {
         debug('GoalStore', 'Calling /api/goals POST...');
         const response = await fetch('/api/goals', {
           method: 'POST',
@@ -175,7 +187,14 @@ export const useGoalStore = create<GoalState>((set, get) => ({
           throw new Error(`Failed to save goal: ${response.status}`);
         }
 
-        debugSuccess('GoalStore', 'API save successful');
+        debugSuccess('GoalStore', 'Goal saved via API (cloud sync)');
+        set({ syncStatus: 'synced' });
+      } catch (apiError: any) {
+        debugWarn('GoalStore', 'API save failed, using browser storage', apiError.message);
+        browserStorage.saveGoal(goal);
+        usedBrowserStorage = true;
+        set({ syncStatus: 'offline' });
+        debugSuccess('GoalStore', 'Goal saved to browser storage (offline fallback)');
       }
 
       // Update local state

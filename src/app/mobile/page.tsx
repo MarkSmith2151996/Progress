@@ -7,7 +7,7 @@ import { format } from 'date-fns';
 import { useRouter } from 'next/navigation';
 import { useLogStore } from '@/stores/logStore';
 import { useGoalStore } from '@/stores/goalStore';
-import { Goal } from '@/types';
+import { Goal, Habit, HabitWithStatus, GoalType, GoalStatus } from '@/types';
 import {
   MobileContainer,
   MainWindow,
@@ -30,11 +30,19 @@ import {
   PopupContent,
   StyledInput,
   StyledTextArea,
+  StyledSelect,
+  ToggleButton,
+  ToggleGroup,
   FormRow,
   FormLabel,
   SectionHeader,
   AddButton,
+  SyncStatusBar,
+  SyncStatusText,
+  SyncStatusIcon,
+  RefreshButton,
 } from '@/components/mobile/MobileShared';
+import { SyncStatus } from '@/stores/goalStore';
 import {
   Win95Icon,
 } from '@/components/mobile/Win95Icons';
@@ -169,11 +177,22 @@ export default function MobilePage() {
   const [showAddGoal, setShowAddGoal] = useState(false);
   const [showEditGoal, setShowEditGoal] = useState(false);
   const [showAddAccomplishment, setShowAddAccomplishment] = useState(false);
+  const [showEditHabit, setShowEditHabit] = useState(false);
+  const [showEditAccomplishment, setShowEditAccomplishment] = useState(false);
   const [editingGoal, setEditingGoal] = useState<Goal | null>(null);
+  const [editingHabit, setEditingHabit] = useState<Habit | null>(null);
+  const [editingAccomplishment, setEditingAccomplishment] = useState<{ text: string; date: string; index: number } | null>(null);
   const [newGoalTitle, setNewGoalTitle] = useState('');
   const [newGoalTarget, setNewGoalTarget] = useState('');
   const [newGoalCurrent, setNewGoalCurrent] = useState('');
+  const [newGoalDeadline, setNewGoalDeadline] = useState('');
+  const [newGoalStatus, setNewGoalStatus] = useState<GoalStatus>('active');
+  const [newGoalType, setNewGoalType] = useState<GoalType>('monthly');
   const [newAccomplishment, setNewAccomplishment] = useState('');
+  const [editAccomplishmentText, setEditAccomplishmentText] = useState('');
+  const [newHabitName, setNewHabitName] = useState('');
+  const [newHabitTarget, setNewHabitTarget] = useState('');
+  const [newHabitActive, setNewHabitActive] = useState(true);
   const [saving, setSaving] = useState(false);
 
   const {
@@ -183,16 +202,48 @@ export default function MobilePage() {
     fetchData,
     toggleHabit,
     saveDailyLog,
+    updateHabit,
+    deleteHabit,
+    getTodayHabits,
+    syncStatus: logSyncStatus,
   } = useLogStore();
 
-  const { goals, fetchGoals, saveGoal, deleteGoal } = useGoalStore();
+  const { goals, fetchGoals, saveGoal, deleteGoal, syncStatus: goalSyncStatus } = useGoalStore();
+
+  // Combined sync status - if either is offline/error, show that
+  const syncStatus: SyncStatus =
+    goalSyncStatus === 'error' || logSyncStatus === 'error' ? 'error' :
+    goalSyncStatus === 'syncing' || logSyncStatus === 'syncing' ? 'syncing' :
+    goalSyncStatus === 'offline' || logSyncStatus === 'offline' ? 'offline' :
+    'synced';
+
+  const [isRefreshing, setIsRefreshing] = useState(false);
+
+  const handleRefresh = async () => {
+    setIsRefreshing(true);
+    try {
+      await Promise.all([fetchData(), fetchGoals()]);
+    } finally {
+      setIsRefreshing(false);
+    }
+  };
+
+  const getSyncStatusLabel = () => {
+    switch (syncStatus) {
+      case 'synced': return 'Cloud Synced';
+      case 'offline': return 'Offline Mode';
+      case 'syncing': return 'Syncing...';
+      case 'error': return 'Sync Error';
+      default: return 'Unknown';
+    }
+  };
 
   useEffect(() => {
     fetchData();
     fetchGoals();
   }, []);
 
-  const activeHabits = habits.filter((h) => h.active);
+  const activeHabits = getTodayHabits();
   const todayCompletions = habitCompletions.filter((c) => c.date === today);
   const activeGoals = goals.filter((g) => g.status === 'active');
   const monthlyGoals = activeGoals.filter((g) => g.type === 'monthly');
@@ -221,7 +272,7 @@ export default function MobilePage() {
 
   const getGoalProgress = (goal: Goal) => {
     if (!goal.target_value) return 0;
-    const current = goal.current_value ?? goal.start_value ?? 0;
+    const current = goal.current_value ?? goal.starting_value ?? 0;
     return Math.min(100, Math.round((current / goal.target_value) * 100));
   };
 
@@ -231,6 +282,9 @@ export default function MobilePage() {
     setNewGoalTitle(goal.title);
     setNewGoalTarget(String(goal.target_value || ''));
     setNewGoalCurrent(String(goal.current_value || 0));
+    setNewGoalDeadline(goal.deadline || '');
+    setNewGoalStatus(goal.status || 'active');
+    setNewGoalType(goal.type || 'monthly');
     setShowEditGoal(true);
   };
 
@@ -245,6 +299,9 @@ export default function MobilePage() {
         title: newGoalTitle.trim(),
         target_value: parseFloat(newGoalTarget) || 100,
         current_value: parseFloat(newGoalCurrent) || 0,
+        deadline: newGoalDeadline || editingGoal.deadline,
+        status: newGoalStatus,
+        type: newGoalType,
         updated_at: new Date().toISOString(),
       };
 
@@ -254,6 +311,9 @@ export default function MobilePage() {
       setNewGoalTitle('');
       setNewGoalTarget('');
       setNewGoalCurrent('');
+      setNewGoalDeadline('');
+      setNewGoalStatus('active');
+      setNewGoalType('monthly');
     } catch (err) {
       console.error('Failed to update goal:', err);
     } finally {
@@ -286,11 +346,15 @@ export default function MobilePage() {
         goal_id: `goal_${Date.now()}`,
         title: newGoalTitle.trim(),
         type: 'monthly',
+        parent_goal_id: null,
         target_value: parseFloat(newGoalTarget) || 100,
+        starting_value: 0,
         current_value: 0,
-        start_value: 0,
-        status: 'active',
+        unit: '',
+        start_date: format(new Date(), 'yyyy-MM-dd'),
         deadline: format(new Date(new Date().getFullYear(), new Date().getMonth() + 1, 0), 'yyyy-MM-dd'),
+        status: 'active',
+        priority: 1,
         created_at: new Date().toISOString(),
         updated_at: new Date().toISOString(),
       };
@@ -316,12 +380,15 @@ export default function MobilePage() {
 
       const updatedLog = {
         date: today,
+        day_type: existingLog?.day_type ?? null,
         energy_level: existingLog?.energy_level ?? 3,
-        sleep_hours: existingLog?.sleep_hours ?? 7,
+        hours_slept: existingLog?.hours_slept ?? 7,
         work_hours: existingLog?.work_hours ?? 0,
         school_hours: existingLog?.school_hours ?? 0,
+        free_hours: existingLog?.free_hours ?? null,
         overall_rating: existingLog?.overall_rating ?? 3,
         notes: existingLog?.notes ?? '',
+        sick: existingLog?.sick ?? false,
         accomplishments: [...currentAccomplishments, newAccomplishment.trim()],
         created_at: existingLog?.created_at ?? new Date().toISOString(),
         updated_at: new Date().toISOString(),
@@ -332,6 +399,129 @@ export default function MobilePage() {
       setShowAddAccomplishment(false);
     } catch (err) {
       console.error('Failed to add accomplishment:', err);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  // Open edit popup for a habit
+  const handleEditHabit = (habit: Habit, e: React.MouseEvent) => {
+    e.stopPropagation();
+    setEditingHabit(habit);
+    setNewHabitName(habit.name);
+    setNewHabitTarget(String(habit.target_minutes || ''));
+    setNewHabitActive(habit.active);
+    setShowEditHabit(true);
+  };
+
+  // Save edited habit
+  const handleSaveEditedHabit = async () => {
+    if (!editingHabit || !newHabitName.trim()) return;
+    setSaving(true);
+
+    try {
+      const updatedHabit: Habit = {
+        ...editingHabit,
+        name: newHabitName.trim(),
+        target_minutes: newHabitTarget ? parseInt(newHabitTarget) : null,
+        active: newHabitActive,
+      };
+
+      await updateHabit(updatedHabit);
+      setShowEditHabit(false);
+      setEditingHabit(null);
+      setNewHabitName('');
+      setNewHabitTarget('');
+      setNewHabitActive(true);
+    } catch (err) {
+      console.error('Failed to update habit:', err);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  // Delete habit
+  const handleDeleteHabit = async () => {
+    if (!editingHabit) return;
+    setSaving(true);
+
+    try {
+      await deleteHabit(editingHabit.habit_id);
+      setShowEditHabit(false);
+      setEditingHabit(null);
+    } catch (err) {
+      console.error('Failed to delete habit:', err);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  // Open edit popup for an accomplishment
+  const handleEditAccomplishment = (acc: { text: string; date: string }, index: number) => {
+    setEditingAccomplishment({ ...acc, index });
+    setEditAccomplishmentText(acc.text);
+    setShowEditAccomplishment(true);
+  };
+
+  // Save edited accomplishment
+  const handleSaveEditedAccomplishment = async () => {
+    if (!editingAccomplishment || !editAccomplishmentText.trim()) return;
+    setSaving(true);
+
+    try {
+      const log = dailyLogs.find((l) => l.date === editingAccomplishment.date);
+      if (!log) return;
+
+      // Find and update the accomplishment in the log
+      const accomplishments = log.accomplishments ? [...log.accomplishments] : [];
+      const accIndex = accomplishments.indexOf(editingAccomplishment.text);
+      if (accIndex >= 0) {
+        accomplishments[accIndex] = editAccomplishmentText.trim();
+      }
+
+      const updatedLog = {
+        ...log,
+        accomplishments,
+        updated_at: new Date().toISOString(),
+      };
+
+      await saveDailyLog(updatedLog);
+      setShowEditAccomplishment(false);
+      setEditingAccomplishment(null);
+      setEditAccomplishmentText('');
+    } catch (err) {
+      console.error('Failed to update accomplishment:', err);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  // Delete accomplishment
+  const handleDeleteAccomplishment = async () => {
+    if (!editingAccomplishment) return;
+    setSaving(true);
+
+    try {
+      const log = dailyLogs.find((l) => l.date === editingAccomplishment.date);
+      if (!log) return;
+
+      // Remove the accomplishment from the log
+      const accomplishments = log.accomplishments
+        ? log.accomplishments.filter((acc) => acc !== editingAccomplishment.text)
+        : [];
+
+      const updatedLog = {
+        ...log,
+        accomplishments,
+        updated_at: new Date().toISOString(),
+      };
+
+      await saveDailyLog(updatedLog);
+      setShowEditAccomplishment(false);
+      setEditingAccomplishment(null);
+      setEditAccomplishmentText('');
+    } catch (err) {
+      console.error('Failed to delete accomplishment:', err);
     } finally {
       setSaving(false);
     }
@@ -444,6 +634,13 @@ export default function MobilePage() {
                     {habit.streak}
                   </ListItemMeta>
                 )}
+                <Button
+                  size="sm"
+                  style={{ marginLeft: 8, minWidth: 32, padding: '2px 6px' }}
+                  onClick={(e) => handleEditHabit(habit, e)}
+                >
+                  ✎
+                </Button>
               </ListItem>
             );
           })}
@@ -523,10 +720,14 @@ export default function MobilePage() {
 
     return (
       <>
-        <SectionHeader>Your Wins</SectionHeader>
+        <SectionHeader>Your Wins (tap to edit)</SectionHeader>
         <ListContainer>
           {allAccomplishments.slice(0, 50).map((acc, index) => (
-            <AccomplishmentItem key={index}>
+            <AccomplishmentItem
+              key={index}
+              style={{ cursor: 'pointer' }}
+              onClick={() => handleEditAccomplishment(acc, index)}
+            >
               <Win95Icon $bg="#FFD700" $color="#800000">★</Win95Icon>
               <AccomplishmentContent>
                 <AccomplishmentText>{acc.text}</AccomplishmentText>
@@ -574,6 +775,19 @@ export default function MobilePage() {
           </TitleBar>
 
           <ContentArea>
+            <SyncStatusBar $status={syncStatus}>
+              <SyncStatusText>
+                <SyncStatusIcon $status={syncStatus} />
+                {getSyncStatusLabel()}
+              </SyncStatusText>
+              <RefreshButton
+                size="sm"
+                onClick={handleRefresh}
+                disabled={isRefreshing || syncStatus === 'syncing'}
+              >
+                {isRefreshing ? '...' : 'Refresh'}
+              </RefreshButton>
+            </SyncStatusBar>
             <ScrollArea>
               {activeTab === TABS.SUMMARY && renderGoalSummary()}
               {activeTab === TABS.HABITS && renderHabits()}
@@ -710,6 +924,37 @@ export default function MobilePage() {
                   placeholder="Target value"
                 />
               </FormRow>
+              <FormRow>
+                <FormLabel>Deadline</FormLabel>
+                <StyledInput
+                  type="date"
+                  value={newGoalDeadline}
+                  onChange={(e) => setNewGoalDeadline(e.target.value)}
+                />
+              </FormRow>
+              <FormRow>
+                <FormLabel>Type</FormLabel>
+                <StyledSelect
+                  value={newGoalType}
+                  onChange={(e) => setNewGoalType(e.target.value as GoalType)}
+                >
+                  <option value="monthly">Monthly</option>
+                  <option value="weekly_chunk">Weekly Chunk</option>
+                  <option value="bonus">Bonus</option>
+                </StyledSelect>
+              </FormRow>
+              <FormRow>
+                <FormLabel>Status</FormLabel>
+                <StyledSelect
+                  value={newGoalStatus}
+                  onChange={(e) => setNewGoalStatus(e.target.value as GoalStatus)}
+                >
+                  <option value="active">Active</option>
+                  <option value="completed">Completed</option>
+                  <option value="paused">Paused</option>
+                  <option value="abandoned">Abandoned</option>
+                </StyledSelect>
+              </FormRow>
               <ButtonRow>
                 <Button
                   primary
@@ -763,6 +1008,124 @@ export default function MobilePage() {
               >
                 {saving ? 'Saving...' : 'Add Win!'}
               </Button>
+            </PopupContent>
+          </PopupWindow>
+        </PopupOverlay>
+      )}
+
+      {/* Edit Habit Popup */}
+      {showEditHabit && editingHabit && (
+        <PopupOverlay onClick={() => setShowEditHabit(false)}>
+          <PopupWindow onClick={(e) => e.stopPropagation()}>
+            <TitleBar>
+              <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                <Win95Icon $bg="#90EE90" $color="#008000" style={{ width: 14, height: 14, fontSize: 8 }}>✓</Win95Icon>
+                Edit Habit
+              </span>
+              <TitleBarButton size="sm" onClick={() => setShowEditHabit(false)}>
+                ✕
+              </TitleBarButton>
+            </TitleBar>
+            <PopupContent>
+              <FormRow>
+                <FormLabel>Habit Name</FormLabel>
+                <StyledInput
+                  value={newHabitName}
+                  onChange={(e) => setNewHabitName(e.target.value)}
+                  placeholder="e.g., Exercise"
+                  autoFocus
+                />
+              </FormRow>
+              <FormRow>
+                <FormLabel>Target Minutes (optional)</FormLabel>
+                <StyledInput
+                  type="number"
+                  value={newHabitTarget}
+                  onChange={(e) => setNewHabitTarget(e.target.value)}
+                  placeholder="e.g., 30"
+                />
+              </FormRow>
+              <FormRow>
+                <FormLabel>Status</FormLabel>
+                <ToggleGroup>
+                  <ToggleButton
+                    $active={newHabitActive}
+                    onClick={() => setNewHabitActive(true)}
+                  >
+                    Active
+                  </ToggleButton>
+                  <ToggleButton
+                    $active={!newHabitActive}
+                    onClick={() => setNewHabitActive(false)}
+                  >
+                    Inactive
+                  </ToggleButton>
+                </ToggleGroup>
+              </FormRow>
+              <ButtonRow>
+                <Button
+                  primary
+                  style={{ flex: 1 }}
+                  onClick={handleSaveEditedHabit}
+                  disabled={saving || !newHabitName.trim()}
+                >
+                  {saving ? 'Saving...' : 'Save'}
+                </Button>
+                <Button
+                  style={{ flex: 1, color: '#800000' }}
+                  onClick={handleDeleteHabit}
+                  disabled={saving}
+                >
+                  Delete
+                </Button>
+              </ButtonRow>
+            </PopupContent>
+          </PopupWindow>
+        </PopupOverlay>
+      )}
+
+      {/* Edit Accomplishment Popup */}
+      {showEditAccomplishment && editingAccomplishment && (
+        <PopupOverlay onClick={() => setShowEditAccomplishment(false)}>
+          <PopupWindow onClick={(e) => e.stopPropagation()}>
+            <TitleBar>
+              <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                <Win95Icon $bg="#FFD700" $color="#800000" style={{ width: 14, height: 14, fontSize: 8 }}>★</Win95Icon>
+                Edit Accomplishment
+              </span>
+              <TitleBarButton size="sm" onClick={() => setShowEditAccomplishment(false)}>
+                ✕
+              </TitleBarButton>
+            </TitleBar>
+            <PopupContent>
+              <FormRow>
+                <FormLabel>
+                  {format(new Date(editingAccomplishment.date), 'MMM d, yyyy')}
+                </FormLabel>
+                <StyledTextArea
+                  value={editAccomplishmentText}
+                  onChange={(e) => setEditAccomplishmentText(e.target.value)}
+                  placeholder="What did you accomplish?"
+                  autoFocus
+                />
+              </FormRow>
+              <ButtonRow>
+                <Button
+                  primary
+                  style={{ flex: 1 }}
+                  onClick={handleSaveEditedAccomplishment}
+                  disabled={saving || !editAccomplishmentText.trim()}
+                >
+                  {saving ? 'Saving...' : 'Save'}
+                </Button>
+                <Button
+                  style={{ flex: 1, color: '#800000' }}
+                  onClick={handleDeleteAccomplishment}
+                  disabled={saving}
+                >
+                  Delete
+                </Button>
+              </ButtonRow>
             </PopupContent>
           </PopupWindow>
         </PopupOverlay>

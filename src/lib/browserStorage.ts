@@ -156,13 +156,31 @@ export function saveTask(task: Task): void {
 }
 
 // ============================================
-// CHECK IF VERCEL WITHOUT BACKEND
+// STORAGE STATUS HELPERS
 // ============================================
 
-export function isVercelWithoutBackend(): boolean {
+/**
+ * Check if browser storage is available.
+ * Used as a fallback when API fails.
+ */
+export function isBrowserStorageAvailable(): boolean {
   if (typeof window === 'undefined') return false;
 
-  // Check if we're on Vercel by looking at the hostname
-  const hostname = window.location.hostname;
-  return hostname.includes('vercel.app') || hostname.includes('.vercel.app');
+  try {
+    const testKey = '__storage_test__';
+    localStorage.setItem(testKey, testKey);
+    localStorage.removeItem(testKey);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * @deprecated Use API-first approach instead. Browser storage is now only used as fallback.
+ */
+export function isVercelWithoutBackend(): boolean {
+  // This function is kept for backwards compatibility but is no longer used.
+  // The new approach is to always try the API first, then fall back to browser storage.
+  return false;
 }

@@ -330,6 +330,45 @@ export const StyledTextArea = styled.textarea`
   }
 `;
 
+export const StyledSelect = styled.select`
+  width: 100%;
+  padding: 6px 8px;
+  font-size: 13px;
+  border: 2px solid;
+  border-color: #808080 #dfdfdf #dfdfdf #808080;
+  box-shadow: inset 1px 1px 0 #0a0a0a;
+  background: #fff;
+  font-family: inherit;
+  cursor: pointer;
+
+  &:focus {
+    outline: none;
+  }
+`;
+
+export const ToggleButton = styled.button<{ $active?: boolean }>`
+  flex: 1;
+  padding: 8px 4px;
+  font-size: 12px;
+  font-family: inherit;
+  background: ${props => props.$active ? '#000080' : '#c0c0c0'};
+  color: ${props => props.$active ? '#fff' : '#000'};
+  border: 2px solid;
+  border-color: ${props => props.$active
+    ? '#808080 #dfdfdf #dfdfdf #808080'
+    : '#dfdfdf #808080 #808080 #dfdfdf'};
+  cursor: pointer;
+
+  &:focus {
+    outline: none;
+  }
+`;
+
+export const ToggleGroup = styled.div`
+  display: flex;
+  gap: 2px;
+`;
+
 export const FormRow = styled.div`
   margin-bottom: 12px;
 `;
@@ -407,4 +446,64 @@ export const AccomplishmentDate = styled.div`
   font-size: 10px;
   color: #808080;
   margin-top: 2px;
+`;
+
+// ============================================
+// SYNC STATUS INDICATOR
+// ============================================
+
+export const SyncStatusBar = styled.div<{ $status: 'synced' | 'offline' | 'syncing' | 'error' }>`
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 4px 8px;
+  font-size: 10px;
+  font-weight: bold;
+  background: ${props => {
+    switch (props.$status) {
+      case 'synced': return '#90EE90';
+      case 'offline': return '#FFD700';
+      case 'syncing': return '#ADD8E6';
+      case 'error': return '#FF6B6B';
+      default: return '#c0c0c0';
+    }
+  }};
+  color: #000;
+  border-bottom: 1px solid #808080;
+`;
+
+export const SyncStatusText = styled.span`
+  display: flex;
+  align-items: center;
+  gap: 4px;
+`;
+
+export const SyncStatusIcon = styled.span<{ $status: 'synced' | 'offline' | 'syncing' | 'error' }>`
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: ${props => {
+    switch (props.$status) {
+      case 'synced': return '#008000';
+      case 'offline': return '#808080';
+      case 'syncing': return '#0000FF';
+      case 'error': return '#FF0000';
+      default: return '#808080';
+    }
+  }};
+  ${props => props.$status === 'syncing' && `
+    animation: pulse 1s ease-in-out infinite;
+  `}
+
+  @keyframes pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.5; }
+  }
+`;
+
+export const RefreshButton = styled(Button)`
+  min-width: auto;
+  padding: 2px 8px;
+  font-size: 10px;
 `;

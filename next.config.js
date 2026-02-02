@@ -10,8 +10,9 @@ const nextConfig = {
   eslint: {
     ignoreDuringBuilds: process.env.VERCEL === '1',
   },
-  // Ensure serverless compatibility
-  output: process.env.ELECTRON_BUILD ? 'export' : undefined,
+  // For Electron: use standalone mode to bundle Next.js server
+  // For Vercel: use default (no output specified)
+  output: process.env.ELECTRON_BUILD ? 'standalone' : undefined,
 };
 
 module.exports = nextConfig;

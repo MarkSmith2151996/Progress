@@ -27,6 +27,9 @@ import {
   PopupWindow,
   PopupContent,
   StyledTextArea,
+  StyledInput,
+  ToggleButton,
+  ToggleGroup,
   FormRow,
   FormLabel,
 } from '@/components/mobile/MobileShared';
@@ -139,7 +142,15 @@ export default function MobileCalendarPage() {
   const [selectedDay, setSelectedDay] = useState<string | null>(null);
   const [noteText, setNoteText] = useState('');
   const [showQuickLog, setShowQuickLog] = useState(false);
+  const [showFullEditor, setShowFullEditor] = useState(false);
   const [saving, setSaving] = useState(false);
+
+  // Full log editor state
+  const [editEnergy, setEditEnergy] = useState(3);
+  const [editSleep, setEditSleep] = useState('7');
+  const [editWork, setEditWork] = useState('0');
+  const [editRating, setEditRating] = useState(3);
+  const [editNotes, setEditNotes] = useState('');
 
   const { dailyLogs, habitCompletions, habits, fetchData, saveDailyLog } = useLogStore();
 
@@ -177,12 +188,15 @@ export default function MobileCalendarPage() {
       const existingLog = dailyLogs.find((l) => l.date === selectedDay);
       const updatedLog = {
         date: selectedDay,
+        day_type: existingLog?.day_type ?? null,
         energy_level: existingLog?.energy_level ?? 3,
-        sleep_hours: existingLog?.sleep_hours ?? 7,
+        hours_slept: existingLog?.hours_slept ?? 7,
         work_hours: existingLog?.work_hours ?? 0,
         school_hours: existingLog?.school_hours ?? 0,
+        free_hours: existingLog?.free_hours ?? null,
         overall_rating: existingLog?.overall_rating ?? 3,
         notes: noteText,
+        sick: existingLog?.sick ?? false,
         accomplishments: existingLog?.accomplishments ?? [],
         created_at: existingLog?.created_at ?? new Date().toISOString(),
         updated_at: new Date().toISOString(),
@@ -193,6 +207,51 @@ export default function MobileCalendarPage() {
       setShowQuickLog(false);
     } catch (err) {
       console.error('Failed to save note:', err);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  // Open full log editor
+  const openFullEditor = () => {
+    if (!selectedDay) return;
+    const log = dailyLogs.find((l) => l.date === selectedDay);
+    setEditEnergy(log?.energy_level ?? 3);
+    setEditSleep(String(log?.hours_slept ?? 7));
+    setEditWork(String(log?.work_hours ?? 0));
+    setEditRating(log?.overall_rating ?? 3);
+    setEditNotes(log?.notes ?? '');
+    setShowFullEditor(true);
+  };
+
+  // Save full log
+  const handleSaveFullLog = async () => {
+    if (!selectedDay) return;
+    setSaving(true);
+
+    try {
+      const existingLog = dailyLogs.find((l) => l.date === selectedDay);
+      const updatedLog = {
+        date: selectedDay,
+        day_type: existingLog?.day_type ?? null,
+        energy_level: editEnergy,
+        hours_slept: parseFloat(editSleep) || 0,
+        work_hours: parseFloat(editWork) || 0,
+        school_hours: existingLog?.school_hours ?? 0,
+        free_hours: existingLog?.free_hours ?? null,
+        overall_rating: editRating,
+        notes: editNotes,
+        sick: existingLog?.sick ?? false,
+        accomplishments: existingLog?.accomplishments ?? [],
+        created_at: existingLog?.created_at ?? new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      };
+
+      await saveDailyLog(updatedLog);
+      setShowFullEditor(false);
+      setSelectedDay(null);
+    } catch (err) {
+      console.error('Failed to save log:', err);
     } finally {
       setSaving(false);
     }
@@ -273,7 +332,7 @@ export default function MobileCalendarPage() {
       </MobileContainer>
 
       {/* Day Detail Popup */}
-      {selectedDay && !showQuickLog && (
+      {selectedDay && !showQuickLog && !showFullEditor && (
         <PopupOverlay onClick={() => setSelectedDay(null)}>
           <PopupWindow onClick={(e) => e.stopPropagation()}>
             <TitleBar>
@@ -297,7 +356,7 @@ export default function MobileCalendarPage() {
                       <div style={{ fontSize: 9, color: '#808080' }}>Energy</div>
                     </div>
                     <div style={{ textAlign: 'center' }}>
-                      <div style={{ fontSize: 18 }}>{dayData.log.sleep_hours || '—'}h</div>
+                      <div style={{ fontSize: 18 }}>{dayData.log.hours_slept || '—'}h</div>
                       <div style={{ fontSize: 9, color: '#808080' }}>Sleep</div>
                     </div>
                     <div style={{ textAlign: 'center' }}>
@@ -305,6 +364,16 @@ export default function MobileCalendarPage() {
                       <div style={{ fontSize: 9, color: '#808080' }}>Rating</div>
                     </div>
                   </div>
+                  {(dayData.log.work_hours ?? 0) > 0 && (
+                    <div style={{
+                      fontSize: 11,
+                      color: '#808080',
+                      textAlign: 'center',
+                      marginBottom: 8
+                    }}>
+                      Work: {dayData.log.work_hours}h
+                    </div>
+                  )}
                   {dayData.log.notes && (
                     <div style={{
                       fontSize: 12,
@@ -346,6 +415,15 @@ export default function MobileCalendarPage() {
                 </div>
               )}
 
+              <div style={{ display: 'flex', gap: 8, marginBottom: 8 }}>
+                <Button
+                  primary
+                  style={{ flex: 1 }}
+                  onClick={openFullEditor}
+                >
+                  Edit Full Log
+                </Button>
+              </div>
               <div style={{ display: 'flex', gap: 8 }}>
                 <Button
                   style={{ flex: 1 }}
@@ -354,7 +432,7 @@ export default function MobileCalendarPage() {
                     setShowQuickLog(true);
                   }}
                 >
-                  {dayData?.log ? 'Edit Note' : 'Add Note'}
+                  {dayData?.log ? 'Quick Note' : 'Add Note'}
                 </Button>
                 <Button style={{ flex: 1 }} onClick={() => setSelectedDay(null)}>
                   Close
@@ -393,6 +471,98 @@ export default function MobileCalendarPage() {
                   {saving ? 'Saving...' : 'Save'}
                 </Button>
                 <Button style={{ flex: 1 }} onClick={() => { setShowQuickLog(false); setSelectedDay(null); }}>
+                  Cancel
+                </Button>
+              </div>
+            </PopupContent>
+          </PopupWindow>
+        </PopupOverlay>
+      )}
+
+      {/* Full Log Editor Popup */}
+      {showFullEditor && selectedDay && (
+        <PopupOverlay onClick={() => { setShowFullEditor(false); setSelectedDay(null); }}>
+          <PopupWindow onClick={(e) => e.stopPropagation()}>
+            <TitleBar>
+              <span>📊 Edit Log - {format(new Date(selectedDay), 'MMM d')}</span>
+              <TitleBarButton size="sm" onClick={() => { setShowFullEditor(false); setSelectedDay(null); }}>✕</TitleBarButton>
+            </TitleBar>
+            <PopupContent>
+              <FormRow>
+                <FormLabel>Energy Level (1-5)</FormLabel>
+                <ToggleGroup>
+                  {[1, 2, 3, 4, 5].map((level) => (
+                    <ToggleButton
+                      key={level}
+                      $active={editEnergy === level}
+                      onClick={() => setEditEnergy(level)}
+                    >
+                      {level}
+                    </ToggleButton>
+                  ))}
+                </ToggleGroup>
+              </FormRow>
+
+              <FormRow>
+                <FormLabel>Sleep Hours</FormLabel>
+                <StyledInput
+                  type="number"
+                  step="0.5"
+                  min="0"
+                  max="24"
+                  value={editSleep}
+                  onChange={(e) => setEditSleep(e.target.value)}
+                  placeholder="e.g., 7.5"
+                />
+              </FormRow>
+
+              <FormRow>
+                <FormLabel>Work Hours</FormLabel>
+                <StyledInput
+                  type="number"
+                  step="0.5"
+                  min="0"
+                  max="24"
+                  value={editWork}
+                  onChange={(e) => setEditWork(e.target.value)}
+                  placeholder="e.g., 8"
+                />
+              </FormRow>
+
+              <FormRow>
+                <FormLabel>Overall Rating (1-5)</FormLabel>
+                <ToggleGroup>
+                  {[1, 2, 3, 4, 5].map((level) => (
+                    <ToggleButton
+                      key={level}
+                      $active={editRating === level}
+                      onClick={() => setEditRating(level)}
+                    >
+                      {'⭐'.repeat(level)}
+                    </ToggleButton>
+                  ))}
+                </ToggleGroup>
+              </FormRow>
+
+              <FormRow>
+                <FormLabel>Notes</FormLabel>
+                <StyledTextArea
+                  value={editNotes}
+                  onChange={(e) => setEditNotes(e.target.value)}
+                  placeholder="How was your day?"
+                />
+              </FormRow>
+
+              <div style={{ display: 'flex', gap: 8 }}>
+                <Button
+                  primary
+                  style={{ flex: 1 }}
+                  onClick={handleSaveFullLog}
+                  disabled={saving}
+                >
+                  {saving ? 'Saving...' : 'Save Log'}
+                </Button>
+                <Button style={{ flex: 1 }} onClick={() => { setShowFullEditor(false); setSelectedDay(null); }}>
                   Cancel
                 </Button>
               </div>

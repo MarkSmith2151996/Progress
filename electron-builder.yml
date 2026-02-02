@@ -10,7 +10,17 @@ files:
     filter:
       - package.json
       - main
-  - out
+
+extraResources:
+  - from: .next/standalone
+    to: standalone
+    filter:
+      - "**/*"
+      - "**/node_modules/**"
+
+asar: true
+asarUnpack:
+  - "**/*.node"
 
 win:
   target:
@@ -19,6 +29,7 @@ win:
         - x64
   icon: public/icon.ico
   artifactName: "${productName}-Setup-${version}.${ext}"
+  signAndEditExecutable: false
 
 nsis:
   oneClick: false

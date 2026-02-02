@@ -13,7 +13,11 @@
     "electron:dev": "npm run build:electron && concurrently -k \"npm run dev\" \"wait-on http://localhost:3000 && electron .\"",
     "electron:build": "npm run build:next && npm run build:electron && electron-builder",
     "build:next": "set ELECTRON_BUILD=true && next build",
-    "build:electron": "tsc -p tsconfig.electron.json"
+    "build:electron": "tsc -p tsconfig.electron.json",
+    "setup": "node scripts/setup-credentials.js",
+    "desktop:build": "set ELECTRON_BUILD=true && next build && npm run build:electron && npm run desktop:prepare && electron-builder",
+    "desktop:prepare": "node scripts/prepare-standalone.js",
+    "desktop:run": "electron ."
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.24.0",

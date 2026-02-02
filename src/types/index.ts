@@ -71,7 +71,9 @@ export interface DailyLog {
   overall_rating: number | null;
   notes: string | null;
   sick: boolean;
+  accomplishments?: string[];
   created_at: string;
+  updated_at?: string;
 }
 
 // ============================================

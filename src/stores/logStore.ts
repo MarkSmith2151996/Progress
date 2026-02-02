@@ -11,6 +11,9 @@ import { syncHabitComplete, logActivity } from '@/lib/coachSync';
 import { debug, debugError, debugSuccess, debugWarn } from '@/lib/debug';
 import * as browserStorage from '@/lib/browserStorage';
 
+// Sync status type for tracking data source
+export type SyncStatus = 'synced' | 'offline' | 'syncing' | 'error';
+
 interface LogState {
   dailyLogs: DailyLog[];
   tasks: Task[];
@@ -18,18 +21,21 @@ interface LogState {
   habitCompletions: HabitCompletion[];
   isLoading: boolean;
   error: string | null;
+  syncStatus: SyncStatus;
 
   // Actions
   setDailyLogs: (logs: DailyLog[]) => void;
   setTasks: (tasks: Task[]) => void;
   setHabits: (habits: Habit[]) => void;
   setHabitCompletions: (completions: HabitCompletion[]) => void;
+  setSyncStatus: (status: SyncStatus) => void;
 
   saveDailyLog: (log: DailyLog) => Promise<void>;
   saveTask: (task: Task) => Promise<void>;
   saveHabitCompletion: (completion: HabitCompletion) => Promise<void>;
   toggleHabit: (habitId: string, date: string) => Promise<void>;
   addHabit: (habit: Habit) => Promise<void>;
+  updateHabit: (habit: Habit) => Promise<void>;
   deleteHabit: (habitId: string) => Promise<void>;
 
   fetchData: () => Promise<void>;
@@ -43,13 +49,6 @@ interface LogState {
   getHabitsByDate: (date: string) => HabitWithStatus[];
 }
 
-// Check if we should use browser storage
-function shouldUseBrowserStorage(): boolean {
-  if (typeof window === 'undefined') return false;
-  const hostname = window.location.hostname;
-  return hostname.includes('vercel.app') || hostname.includes('.vercel.app');
-}
-
 export const useLogStore = create<LogState>((set, get) => ({
   dailyLogs: [],
   tasks: [],
@@ -57,6 +56,7 @@ export const useLogStore = create<LogState>((set, get) => ({
   habitCompletions: [],
   isLoading: false,
   error: null,
+  syncStatus: 'synced' as SyncStatus,
 
   setDailyLogs: (dailyLogs) => {
     debug('LogStore', 'setDailyLogs called', { count: dailyLogs.length });
@@ -78,15 +78,17 @@ export const useLogStore = create<LogState>((set, get) => ({
     set({ habitCompletions });
   },
 
+  setSyncStatus: (syncStatus) => {
+    debug('LogStore', 'setSyncStatus called', { syncStatus });
+    set({ syncStatus });
+  },
+
   saveDailyLog: async (log) => {
     debug('LogStore', 'saveDailyLog called', { date: log.date, energy: log.energy_level });
 
     try {
-      // Use browser storage on Vercel
-      if (shouldUseBrowserStorage()) {
-        browserStorage.saveDailyLog(log);
-        debugSuccess('LogStore', 'Daily log saved to browser storage');
-      } else {
+      // Try API first, fall back to browser storage on failure
+      try {
         debug('LogStore', 'Calling /api/daily-logs POST...');
         const response = await fetch('/api/daily-logs', {
           method: 'POST',
@@ -100,7 +102,13 @@ export const useLogStore = create<LogState>((set, get) => ({
           throw new Error(`Failed to save daily log: ${response.status}`);
         }
 
-        debugSuccess('LogStore', 'API save successful');
+        debugSuccess('LogStore', 'Daily log saved via API (cloud sync)');
+        set({ syncStatus: 'synced' });
+      } catch (apiError: any) {
+        debugWarn('LogStore', 'API save failed, using browser storage', apiError.message);
+        browserStorage.saveDailyLog(log);
+        set({ syncStatus: 'offline' });
+        debugSuccess('LogStore', 'Daily log saved to browser storage (offline fallback)');
       }
 
       set((state) => {
@@ -135,11 +143,8 @@ export const useLogStore = create<LogState>((set, get) => ({
     debug('LogStore', 'saveTask called', { taskId: task.task_id, description: task.description });
 
     try {
-      // Use browser storage on Vercel
-      if (shouldUseBrowserStorage()) {
-        browserStorage.saveTask(task);
-        debugSuccess('LogStore', 'Task saved to browser storage');
-      } else {
+      // Try API first, fall back to browser storage on failure
+      try {
         debug('LogStore', 'Calling /api/tasks POST...');
         const response = await fetch('/api/tasks', {
           method: 'POST',
@@ -153,7 +158,13 @@ export const useLogStore = create<LogState>((set, get) => ({
           throw new Error(`Failed to save task: ${response.status}`);
         }
 
-        debugSuccess('LogStore', 'Task API save successful');
+        debugSuccess('LogStore', 'Task saved via API (cloud sync)');
+        set({ syncStatus: 'synced' });
+      } catch (apiError: any) {
+        debugWarn('LogStore', 'API save failed, using browser storage', apiError.message);
+        browserStorage.saveTask(task);
+        set({ syncStatus: 'offline' });
+        debugSuccess('LogStore', 'Task saved to browser storage (offline fallback)');
       }
 
       set((state) => {
@@ -182,11 +193,8 @@ export const useLogStore = create<LogState>((set, get) => ({
     debug('LogStore', 'saveHabitCompletion called', { habitId: completion.habit_id, completed: completion.completed });
 
     try {
-      // Use browser storage on Vercel
-      if (shouldUseBrowserStorage()) {
-        browserStorage.saveHabitCompletion(completion);
-        debugSuccess('LogStore', 'Habit completion saved to browser storage');
-      } else {
+      // Try API first, fall back to browser storage on failure
+      try {
         debug('LogStore', 'Calling /api/habit-completions POST...');
         const response = await fetch('/api/habit-completions', {
           method: 'POST',
@@ -200,7 +208,13 @@ export const useLogStore = create<LogState>((set, get) => ({
           throw new Error(`Failed to save habit completion: ${response.status}`);
         }
 
-        debugSuccess('LogStore', 'Habit completion API save successful');
+        debugSuccess('LogStore', 'Habit completion saved via API (cloud sync)');
+        set({ syncStatus: 'synced' });
+      } catch (apiError: any) {
+        debugWarn('LogStore', 'API save failed, using browser storage', apiError.message);
+        browserStorage.saveHabitCompletion(completion);
+        set({ syncStatus: 'offline' });
+        debugSuccess('LogStore', 'Habit completion saved to browser storage (offline fallback)');
       }
 
       set((state) => {
@@ -263,11 +277,8 @@ export const useLogStore = create<LogState>((set, get) => ({
     debug('LogStore', 'addHabit called', { habitId: habit.habit_id, name: habit.name });
 
     try {
-      // Use browser storage on Vercel
-      if (shouldUseBrowserStorage()) {
-        browserStorage.saveHabit(habit);
-        debugSuccess('LogStore', 'Habit saved to browser storage');
-      } else {
+      // Try API first, fall back to browser storage on failure
+      try {
         debug('LogStore', 'Calling /api/habits POST...');
         const response = await fetch('/api/habits', {
           method: 'POST',
@@ -281,7 +292,13 @@ export const useLogStore = create<LogState>((set, get) => ({
           throw new Error(`Failed to save habit: ${response.status}`);
         }
 
-        debugSuccess('LogStore', 'Habits API save successful');
+        debugSuccess('LogStore', 'Habit saved via API (cloud sync)');
+        set({ syncStatus: 'synced' });
+      } catch (apiError: any) {
+        debugWarn('LogStore', 'API save failed, using browser storage', apiError.message);
+        browserStorage.saveHabit(habit);
+        set({ syncStatus: 'offline' });
+        debugSuccess('LogStore', 'Habit saved to browser storage (offline fallback)');
       }
 
       set((state) => ({
@@ -297,25 +314,71 @@ export const useLogStore = create<LogState>((set, get) => ({
     }
   },
 
+  updateHabit: async (habit) => {
+    debug('LogStore', 'updateHabit called', { habitId: habit.habit_id, name: habit.name });
+
+    try {
+      // Try API first, fall back to browser storage on failure
+      try {
+        debug('LogStore', 'Calling /api/habits PUT...');
+        const response = await fetch('/api/habits', {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(habit),
+        });
+
+        if (!response.ok) {
+          const errorText = await response.text();
+          debugError('LogStore', 'Habits API update returned error', { status: response.status, body: errorText });
+          throw new Error(`Failed to update habit: ${response.status}`);
+        }
+
+        debugSuccess('LogStore', 'Habit updated via API (cloud sync)');
+        set({ syncStatus: 'synced' });
+      } catch (apiError: any) {
+        debugWarn('LogStore', 'API update failed, using browser storage', apiError.message);
+        browserStorage.saveHabit(habit);
+        set({ syncStatus: 'offline' });
+        debugSuccess('LogStore', 'Habit updated in browser storage (offline fallback)');
+      }
+
+      set((state) => ({
+        habits: state.habits.map((h) =>
+          h.habit_id === habit.habit_id ? habit : h
+        ),
+        error: null,
+      }));
+
+      debugSuccess('LogStore', 'updateHabit completed');
+    } catch (error: any) {
+      debugError('LogStore', 'updateHabit failed', error);
+      set({ error: error.message });
+      throw error;
+    }
+  },
+
   deleteHabit: async (habitId) => {
     debug('LogStore', 'deleteHabit called', { habitId });
 
     try {
-      // Use browser storage on Vercel
-      if (shouldUseBrowserStorage()) {
-        browserStorage.deleteHabit(habitId);
-        debugSuccess('LogStore', 'Habit deleted from browser storage');
-      } else {
+      // Try API first, fall back to browser storage on failure
+      try {
         debug('LogStore', 'Calling /api/habits DELETE...');
         const response = await fetch(`/api/habits?id=${habitId}`, {
           method: 'DELETE',
         });
 
         if (!response.ok) {
-          debugWarn('LogStore', 'Habits API delete returned non-OK', { status: response.status });
+          throw new Error(`API returned ${response.status}`);
         }
 
-        debugSuccess('LogStore', 'Habits API delete successful');
+        debugSuccess('LogStore', 'Habit deleted via API (cloud sync)');
+        set({ syncStatus: 'synced' });
+      } catch (apiError: any) {
+        debugWarn('LogStore', 'API delete failed, using browser storage', apiError.message);
+        browserStorage.deleteHabit(habitId);
+        set({ syncStatus: 'offline' });
+        debugSuccess('LogStore', 'Habit deleted from browser storage (offline fallback)');
       }
 
       set((state) => ({
@@ -332,22 +395,17 @@ export const useLogStore = create<LogState>((set, get) => ({
 
   fetchData: async () => {
     debug('LogStore', 'fetchData called');
-    set({ isLoading: true, error: null });
+    set({ isLoading: true, error: null, syncStatus: 'syncing' });
 
     try {
       let dailyLogs: DailyLog[] = [];
       let tasks: Task[] = [];
       let habits: Habit[] = [];
       let habitCompletions: HabitCompletion[] = [];
+      let usedBrowserStorage = false;
 
-      // Use browser storage on Vercel
-      if (shouldUseBrowserStorage()) {
-        debug('LogStore', 'Using browser storage');
-        dailyLogs = browserStorage.getDailyLogs();
-        tasks = browserStorage.getTasks();
-        habits = browserStorage.getHabits();
-        habitCompletions = browserStorage.getHabitCompletions();
-      } else {
+      // Try API first, fall back to browser storage on failure
+      try {
         debug('LogStore', 'Fetching all data from APIs...');
         const [logsRes, tasksRes, habitsRes, completionsRes] = await Promise.all([
           fetch('/api/daily-logs'),
@@ -385,13 +443,23 @@ export const useLogStore = create<LogState>((set, get) => ({
         tasks = tasksData.tasks || [];
         habits = habitsData.habits || [];
         habitCompletions = completionsData.completions || [];
+        debugSuccess('LogStore', 'Data fetched from API (cloud sync)');
+      } catch (apiError: any) {
+        debugWarn('LogStore', 'API fetch failed, falling back to browser storage', apiError.message);
+        dailyLogs = browserStorage.getDailyLogs();
+        tasks = browserStorage.getTasks();
+        habits = browserStorage.getHabits();
+        habitCompletions = browserStorage.getHabitCompletions();
+        usedBrowserStorage = true;
+        debug('LogStore', 'Using browser storage (offline mode)');
       }
 
       debug('LogStore', 'Data loaded', {
         logs: dailyLogs.length,
         tasks: tasks.length,
         habits: habits.length,
-        completions: habitCompletions.length
+        completions: habitCompletions.length,
+        source: usedBrowserStorage ? 'browser' : 'api'
       });
 
       set({
@@ -401,12 +469,13 @@ export const useLogStore = create<LogState>((set, get) => ({
         habitCompletions,
         isLoading: false,
         error: null,
+        syncStatus: usedBrowserStorage ? 'offline' : 'synced',
       });
 
       debugSuccess('LogStore', 'fetchData completed successfully');
     } catch (error: any) {
       debugError('LogStore', 'fetchData failed', error);
-      set({ error: error.message, isLoading: false });
+      set({ error: error.message, isLoading: false, syncStatus: 'error' });
     }
   },
 
