@@ -325,7 +325,7 @@ export default function MobileSettingsPage() {
                 </SettingsItem>
               </SettingsList>
 
-              {/* DATA EXPORT */}
+              {/* DATA EXPORT/IMPORT */}
               <SectionHeader style={{ marginTop: 16 }}>
                 💾 Data Management
               </SectionHeader>
@@ -333,7 +333,7 @@ export default function MobileSettingsPage() {
                 <SettingsItem>
                   <ItemContent>
                     <ItemIcon color="#00b894">📤</ItemIcon>
-                    <ItemText>Export Local Data</ItemText>
+                    <ItemText>Export Data</ItemText>
                   </ItemContent>
                   <Button
                     size="sm"
@@ -355,6 +355,43 @@ export default function MobileSettingsPage() {
                     }}
                   >
                     Export
+                  </Button>
+                </SettingsItem>
+                <SettingsItem>
+                  <ItemContent>
+                    <ItemIcon color="#0984e3">📥</ItemIcon>
+                    <ItemText>Import Data</ItemText>
+                  </ItemContent>
+                  <Button
+                    size="sm"
+                    onClick={() => {
+                      const input = document.createElement('input');
+                      input.type = 'file';
+                      input.accept = '.json';
+                      input.onchange = (e) => {
+                        const file = (e.target as HTMLInputElement).files?.[0];
+                        if (!file) return;
+                        const reader = new FileReader();
+                        reader.onload = (ev) => {
+                          try {
+                            const data = JSON.parse(ev.target?.result as string);
+                            if (data.goals) localStorage.setItem('progress95_goals', JSON.stringify(data.goals));
+                            if (data.habits) localStorage.setItem('progress95_habits', JSON.stringify(data.habits));
+                            if (data.dailyLogs) localStorage.setItem('progress95_dailyLogs', JSON.stringify(data.dailyLogs));
+                            if (data.tasks) localStorage.setItem('progress95_tasks', JSON.stringify(data.tasks));
+                            if (data.habitCompletions) localStorage.setItem('progress95_habitCompletions', JSON.stringify(data.habitCompletions));
+                            alert('Data imported! Refreshing...');
+                            window.location.reload();
+                          } catch (err) {
+                            alert('Invalid file format');
+                          }
+                        };
+                        reader.readAsText(file);
+                      };
+                      input.click();
+                    }}
+                  >
+                    Import
                   </Button>
                 </SettingsItem>
               </SettingsList>
