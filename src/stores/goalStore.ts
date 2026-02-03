@@ -14,6 +14,8 @@ interface GoalState {
   setGoals: (goals: Goal[]) => void;
   fetchGoals: () => Promise<void>;
   saveGoal: (goal: Goal) => Promise<void>;
+  addGoal: (goal: Goal) => Promise<void>;
+  updateGoal: (goal: Goal) => Promise<void>;
   deleteGoal: (goalId: string) => Promise<void>;
   setSyncStatus: (status: SyncStatus) => void;
 
@@ -55,6 +57,27 @@ export const useGoalStore = create<GoalState>((set, get) => ({
         }
         return { goals: [...state.goals, goal], syncStatus: 'synced' };
       });
+    } catch (error: any) {
+      set({ error: error.message, syncStatus: 'error' });
+    }
+  },
+
+  addGoal: async (goal) => {
+    try {
+      browserStorage.saveGoal(goal);
+      set((state) => ({ goals: [...state.goals, goal], syncStatus: 'synced' }));
+    } catch (error: any) {
+      set({ error: error.message, syncStatus: 'error' });
+    }
+  },
+
+  updateGoal: async (goal) => {
+    try {
+      browserStorage.saveGoal(goal);
+      set((state) => ({
+        goals: state.goals.map((g) => g.goal_id === goal.goal_id ? goal : g),
+        syncStatus: 'synced'
+      }));
     } catch (error: any) {
       set({ error: error.message, syncStatus: 'error' });
     }
