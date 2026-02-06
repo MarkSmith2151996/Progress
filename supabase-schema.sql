@@ -79,6 +79,7 @@ CREATE TABLE IF NOT EXISTS user_settings (
   id TEXT PRIMARY KEY DEFAULT 'default_user',
   coach_context TEXT,  -- Custom context for AI coach
   theme TEXT DEFAULT 'terminal-classic',
+  preferences JSONB DEFAULT '{}',  -- All app preferences (display, coach, habits, etc.)
   updated_at TIMESTAMPTZ DEFAULT NOW()
 );
 

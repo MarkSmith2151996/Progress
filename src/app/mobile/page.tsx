@@ -9,6 +9,7 @@ import { useLogStore } from '@/stores/logStore';
 import { useGoalStore } from '@/stores/goalStore';
 import { Goal, Habit, HabitWithStatus, GoalType, GoalStatus, Task, TaskStatus } from '@/types';
 import { useCoachStore } from '@/stores/coachStore';
+import { useSettingsStore } from '@/stores/settingsStore';
 import {
   MobileContainer,
   MainWindow,
@@ -368,7 +369,8 @@ const StatValue = styled.span<{ $color?: string }>`
 export default function MobilePage() {
   const router = useRouter();
   const [today] = useState(format(new Date(), 'yyyy-MM-dd'));
-  const [activeTab, setActiveTab] = useState(TABS.SUMMARY);
+  const { default_tab, accent_color, font_size } = useSettingsStore();
+  const [activeTab, setActiveTab] = useState(default_tab);
   const [showAddGoal, setShowAddGoal] = useState(false);
   const [showEditGoal, setShowEditGoal] = useState(false);
   const [showAddAccomplishment, setShowAddAccomplishment] = useState(false);
@@ -474,6 +476,16 @@ export default function MobilePage() {
       default: return 'Unknown';
     }
   };
+
+  // Apply visual settings
+  useEffect(() => {
+    if (accent_color) {
+      document.documentElement.style.setProperty('--accent-color', accent_color);
+    }
+    if (font_size) {
+      document.documentElement.setAttribute('data-font-size', font_size);
+    }
+  }, [accent_color, font_size]);
 
   useEffect(() => {
     fetchData();

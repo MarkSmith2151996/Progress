@@ -350,11 +350,27 @@ export interface ParsedAccomplishment {
 // SETTINGS
 // ============================================
 
+export type FontSize = 'small' | 'medium' | 'large';
+export type CoachTone = 'direct' | 'encouraging' | 'balanced';
+export type DigestFrequency = 'daily' | 'weekly';
+
 export interface UserSettings {
   theme: string;
   coach_minimized: boolean;
   week_colors: Record<string, string>;
   notifications_enabled: boolean;
+  // Profile
+  display_name: string;
+  // Appearance
+  default_tab: number;
+  accent_color: string;
+  font_size: FontSize;
+  // Coach
+  coach_tone: CoachTone;
+  digest_enabled: boolean;
+  digest_frequency: DigestFrequency;
+  // Habits
+  show_streaks: boolean;
 }
 
 export interface WeekColor {

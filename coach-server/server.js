@@ -103,15 +103,18 @@ async function fetchUserContext() {
   const today = todayStr();
   const weekAgo = daysAgo(7);
 
-  // Fetch everything in parallel
-  const [goalsRes, tasksRes, habitsRes, completionsRes, logsRes] =
+  // Fetch everything in parallel (including user preferences)
+  const [goalsRes, tasksRes, habitsRes, completionsRes, logsRes, settingsRes] =
     await Promise.all([
       supabase.from('goals').select('*').eq('status', 'active'),
       supabase.from('tasks').select('*').gte('planned_date', weekAgo),
       supabase.from('habits').select('*').eq('active', true),
       supabase.from('habit_completions').select('*').gte('date', weekAgo),
       supabase.from('daily_logs').select('*').gte('date', weekAgo),
+      supabase.from('user_settings').select('*').eq('id', 'default_user').single(),
     ]);
+
+  const prefs = settingsRes.data?.preferences || {};
 
   return {
     goals: goalsRes.data || [],
@@ -120,6 +123,11 @@ async function fetchUserContext() {
     completions: completionsRes.data || [],
     logs: logsRes.data || [],
     today,
+    preferences: {
+      display_name: prefs.display_name || 'User',
+      coach_tone: prefs.coach_tone || 'direct',
+      coach_context: prefs.coach_context || settingsRes.data?.coach_context || '',
+    },
   };
 }
 
@@ -219,20 +227,27 @@ function buildSystemPrompt(ctx) {
   const alertsBlock =
     m.alerts.length > 0 ? m.alerts.map((a) => `- ${a}`).join('\n') : '- None';
 
-  return `You are a personal productivity coach for a 17-year-old preparing for multiple goals over the next 10 months. You have complete access to their tracking data.
+  const prefs = ctx.preferences || {};
+  const name = prefs.display_name || 'User';
+  const tone = prefs.coach_tone || 'direct';
+  const customContext = prefs.coach_context || '';
+
+  const toneInstructions = {
+    direct: '- Be direct, specific, and data-driven\n- Don\'t sugarcoat - tell it like it is\n- Reference actual numbers from their data',
+    encouraging: '- Be warm, supportive, and encouraging\n- Celebrate wins enthusiastically\n- Frame challenges as opportunities\n- Reference actual numbers from their data',
+    balanced: '- Balance honest feedback with encouragement\n- Acknowledge effort while pushing for improvement\n- Reference actual numbers from their data',
+  };
+
+  return `You are a personal productivity coach for ${name}. You have complete access to their tracking data.
 
 ## YOUR ROLE
-- Be direct, specific, and data-driven
-- Reference actual numbers from their data
+${toneInstructions[tone] || toneInstructions.direct}
 - Adjust tone based on performance
 - Never give generic advice
 - Keep responses concise
 
 ## USER CONTEXT
-- Age: 17, turning 18 in ~10 months
-- Main goals: SAT (1500+), savings ($36K), FBA business prep
-- Also: senior year, AP classes, part-time work at restaurants
-- Building website for family restaurant (The Pines)
+${customContext || 'No additional context provided.'}
 
 ## CURRENT STATE
 Date: ${ctx.today}

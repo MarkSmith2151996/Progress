@@ -598,6 +598,7 @@ export interface UserSettingsDb {
   id: string;
   coach_context: string | null;
   theme: string | null;
+  preferences: Record<string, unknown> | null;
   updated_at: string;
 }
 
@@ -643,6 +644,24 @@ export async function upsertUserSettings(settings: Partial<UserSettingsDb>): Pro
 
 export async function updateCoachContext(context: string): Promise<void> {
   await upsertUserSettings({ coach_context: context });
+}
+
+export async function saveUserPreferences(prefs: Record<string, unknown>): Promise<void> {
+  const client = getSupabaseClient();
+  if (!client) return;
+
+  const { error } = await client
+    .from('user_settings')
+    .upsert({
+      id: DEFAULT_SETTINGS_ID,
+      preferences: prefs,
+      updated_at: new Date().toISOString(),
+    }, { onConflict: 'id' });
+
+  if (error) {
+    console.error('Error saving user preferences:', error);
+    throw error;
+  }
 }
 
 // ============================================

@@ -7,11 +7,11 @@ import { Window, WindowContent, Button, ProgressBar } from 'react95';
 // SHARED MOBILE STYLES - Windows 95 / Coins95
 // ============================================
 
-// Main container with teal background
+// Main container with accent color background
 export const MobileContainer = styled.div`
   min-height: 100vh;
   min-height: 100dvh;
-  background: #008080;
+  background: var(--accent-color, #008080);
   display: flex;
   flex-direction: column;
 `;
@@ -153,7 +153,7 @@ export const TabIcon = styled.span`
 `;
 
 export const TabLabel = styled.span`
-  font-size: 9px;
+  font-size: var(--font-meta, 9px);
   line-height: 1;
   white-space: nowrap;
   overflow: hidden;
@@ -210,13 +210,13 @@ export const Checkbox = styled.div<{ $checked?: boolean }>`
 
 export const ListItemText = styled.span<{ $completed?: boolean }>`
   flex: 1;
-  font-size: 13px;
+  font-size: var(--font-list, 13px);
   color: #000;
   text-decoration: ${props => props.$completed ? 'line-through' : 'none'};
 `;
 
 export const ListItemMeta = styled.span`
-  font-size: 11px;
+  font-size: var(--font-meta, 11px);
   color: #808080;
   margin-left: 8px;
 `;
@@ -249,7 +249,7 @@ export const EmptyStateTitle = styled.div`
 `;
 
 export const EmptyStateText = styled.div`
-  font-size: 11px;
+  font-size: var(--font-meta, 11px);
   color: #808080;
   margin-bottom: 16px;
   max-width: 220px;
@@ -382,7 +382,7 @@ export const FormRow = styled.div`
 
 export const FormLabel = styled.label`
   display: block;
-  font-size: 12px;
+  font-size: var(--font-label, 12px);
   font-weight: bold;
   margin-bottom: 4px;
   color: #000;

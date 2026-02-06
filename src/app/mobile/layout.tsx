@@ -32,7 +32,7 @@ export default function MobileLayout({
       <React95Provider>
         <div style={{
           minHeight: '100vh',
-          background: '#008080',
+          background: 'var(--accent-color, #008080)',
           paddingBottom: '60px', // Space for fixed taskbar
         }}>
           {children}
