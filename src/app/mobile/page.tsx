@@ -7,9 +7,8 @@ import { format } from 'date-fns';
 import { useRouter } from 'next/navigation';
 import { useLogStore } from '@/stores/logStore';
 import { useGoalStore } from '@/stores/goalStore';
-import { Goal, Habit, HabitWithStatus, GoalType, GoalStatus, Task, TaskStatus, CoachDigest } from '@/types';
+import { Goal, Habit, HabitWithStatus, GoalType, GoalStatus, Task, TaskStatus } from '@/types';
 import { useCoachStore } from '@/stores/coachStore';
-import Win95Keyboard from '@/components/mobile/Win95Keyboard';
 import {
   MobileContainer,
   MainWindow,
@@ -399,7 +398,6 @@ export default function MobilePage() {
   // Coach state
   const [coachSubTab, setCoachSubTab] = useState<'chat' | 'digest' | 'dashboard'>('chat');
   const [coachInput, setCoachInput] = useState('');
-  const [showKeyboard, setShowKeyboard] = useState(false);
 
   const {
     chatHistory,
@@ -1036,7 +1034,6 @@ export default function MobilePage() {
         <CoachInput
           value={coachInput}
           onChange={(e) => setCoachInput(e.target.value)}
-          onFocus={() => setShowKeyboard(true)}
           inputMode="none"
           placeholder="Ask your coach..."
           onKeyDown={(e) => {
@@ -1047,20 +1044,6 @@ export default function MobilePage() {
           Send
         </Button>
       </CoachInputRow>
-      <Win95Keyboard
-        visible={showKeyboard}
-        onInput={(char) => setCoachInput((prev) => prev + char)}
-        onBackspace={() => setCoachInput((prev) => prev.slice(0, -1))}
-        onEnter={handleSendCoachMessage}
-      />
-      {showKeyboard && (
-        <Button
-          onClick={() => setShowKeyboard(false)}
-          style={{ width: '100%', fontSize: 10, padding: '2px 0' }}
-        >
-          Hide Keyboard
-        </Button>
-      )}
     </CoachContainer>
   );
 

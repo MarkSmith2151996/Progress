@@ -290,7 +290,11 @@ export const PopupContent = styled.div`
 // FORM INPUTS
 // ============================================
 
-export const StyledInput = styled.input`
+export const StyledInput = styled.input.attrs((props) => ({
+  // Suppress native iOS keyboard — Win95 keyboard handles input
+  // Skip for date inputs which need native date picker
+  inputMode: props.type === 'date' ? undefined : ('none' as const),
+}))`
   width: 100%;
   padding: 6px 8px;
   font-size: 13px;
@@ -309,7 +313,10 @@ export const StyledInput = styled.input`
   }
 `;
 
-export const StyledTextArea = styled.textarea`
+export const StyledTextArea = styled.textarea.attrs({
+  // Suppress native iOS keyboard — Win95 keyboard handles input
+  inputMode: 'none' as const,
+})`
   width: 100%;
   min-height: 80px;
   padding: 6px 8px;

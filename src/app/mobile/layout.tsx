@@ -1,6 +1,7 @@
 import type { Metadata, Viewport } from 'next';
 import StyledComponentsRegistry from '@/lib/registry';
 import { React95Provider } from '@/components/providers/React95Provider';
+import Win95Keyboard from '@/components/mobile/Win95Keyboard';
 
 export const metadata: Metadata = {
   title: 'Progress Tracker',
@@ -36,6 +37,7 @@ export default function MobileLayout({
         }}>
           {children}
         </div>
+        <Win95Keyboard />
       </React95Provider>
     </StyledComponentsRegistry>
   );
