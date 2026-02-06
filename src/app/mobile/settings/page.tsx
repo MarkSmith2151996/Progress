@@ -7,7 +7,7 @@ import { useRouter } from 'next/navigation';
 import { useLogStore } from '@/stores/logStore';
 import { useGoalStore } from '@/stores/goalStore';
 import { useSettingsStore } from '@/stores/settingsStore';
-import { FontSize, CoachTone, DigestFrequency } from '@/types';
+import { FontSize, KeyboardSize, CoachTone, DigestFrequency } from '@/types';
 import {
   MobileContainer,
   MainWindow,
@@ -322,6 +322,7 @@ export default function MobileSettingsPage() {
     coach_context, setCoachContext,
     digest_enabled, setDigestEnabled,
     digest_frequency, setDigestFrequency,
+    keyboard_size, setKeyboardSize,
     show_streaks, setShowStreaks,
     notifications_enabled, setNotificationsEnabled,
     fetchSettings,
@@ -540,6 +541,21 @@ export default function MobileSettingsPage() {
                           key={size}
                           $active={font_size === size}
                           onClick={() => setFontSize(size)}
+                          style={{ padding: '4px 8px', fontSize: 11 }}
+                        >
+                          {size.charAt(0).toUpperCase() + size.slice(1)}
+                        </ToggleButton>
+                      ))}
+                    </ToggleGroup>
+                  </SettingRow>
+                  <SettingRow>
+                    <SettingLabel>Keyboard Size</SettingLabel>
+                    <ToggleGroup>
+                      {(['compact', 'medium', 'large'] as KeyboardSize[]).map(size => (
+                        <ToggleButton
+                          key={size}
+                          $active={keyboard_size === size}
+                          onClick={() => setKeyboardSize(size)}
                           style={{ padding: '4px 8px', fontSize: 11 }}
                         >
                           {size.charAt(0).toUpperCase() + size.slice(1)}

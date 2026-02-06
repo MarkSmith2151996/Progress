@@ -351,6 +351,7 @@ export interface ParsedAccomplishment {
 // ============================================
 
 export type FontSize = 'small' | 'medium' | 'large';
+export type KeyboardSize = 'compact' | 'medium' | 'large';
 export type CoachTone = 'direct' | 'encouraging' | 'balanced';
 export type DigestFrequency = 'daily' | 'weekly';
 
@@ -369,6 +370,8 @@ export interface UserSettings {
   coach_tone: CoachTone;
   digest_enabled: boolean;
   digest_frequency: DigestFrequency;
+  // Keyboard
+  keyboard_size: KeyboardSize;
   // Habits
   show_streaks: boolean;
 }

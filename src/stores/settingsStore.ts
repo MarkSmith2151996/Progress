@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
-import { UserSettings, FontSize, CoachTone, DigestFrequency } from '@/types';
+import { UserSettings, FontSize, KeyboardSize, CoachTone, DigestFrequency } from '@/types';
 import * as supabase from '@/lib/supabase';
 
 interface SettingsState extends UserSettings {
@@ -26,6 +26,7 @@ interface SettingsState extends UserSettings {
   setDigestEnabled: (enabled: boolean) => void;
   setDigestFrequency: (freq: DigestFrequency) => void;
   setShowStreaks: (show: boolean) => void;
+  setKeyboardSize: (size: KeyboardSize) => void;
   syncPreferences: () => Promise<void>;
 }
 
@@ -67,6 +68,7 @@ export const useSettingsStore = create<SettingsState>()(
       coach_tone: 'direct' as CoachTone,
       digest_enabled: true,
       digest_frequency: 'daily' as DigestFrequency,
+      keyboard_size: 'medium' as KeyboardSize,
       show_streaks: true,
 
       // Existing setters
@@ -145,6 +147,11 @@ export const useSettingsStore = create<SettingsState>()(
         debouncedSync(get().syncPreferences);
       },
 
+      setKeyboardSize: (keyboard_size) => {
+        set({ keyboard_size });
+        debouncedSync(get().syncPreferences);
+      },
+
       // Sync all preferences to Supabase as JSONB
       syncPreferences: async () => {
         if (!supabase.isSupabaseConfigured()) return;
@@ -159,6 +166,7 @@ export const useSettingsStore = create<SettingsState>()(
             coach_context: state.coach_context,
             digest_enabled: state.digest_enabled,
             digest_frequency: state.digest_frequency,
+            keyboard_size: state.keyboard_size,
             show_streaks: state.show_streaks,
             notifications_enabled: state.notifications_enabled,
             week_colors: state.week_colors,
@@ -188,6 +196,7 @@ export const useSettingsStore = create<SettingsState>()(
                   if (prefs.coach_context) updates.coach_context = prefs.coach_context as string;
                   if (prefs.digest_enabled !== undefined) updates.digest_enabled = prefs.digest_enabled as boolean;
                   if (prefs.digest_frequency) updates.digest_frequency = prefs.digest_frequency as DigestFrequency;
+                  if (prefs.keyboard_size) updates.keyboard_size = prefs.keyboard_size as KeyboardSize;
                   if (prefs.show_streaks !== undefined) updates.show_streaks = prefs.show_streaks as boolean;
                   if (prefs.notifications_enabled !== undefined) updates.notifications_enabled = prefs.notifications_enabled as boolean;
                   if (prefs.week_colors) updates.week_colors = prefs.week_colors as Record<string, string>;
@@ -237,6 +246,7 @@ export const useSettingsStore = create<SettingsState>()(
         coach_tone: state.coach_tone,
         digest_enabled: state.digest_enabled,
         digest_frequency: state.digest_frequency,
+        keyboard_size: state.keyboard_size,
         show_streaks: state.show_streaks,
       }),
     }

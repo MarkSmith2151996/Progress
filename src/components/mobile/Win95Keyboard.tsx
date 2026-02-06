@@ -1,14 +1,67 @@
 'use client';
 
-import { useState, useCallback, useEffect, useRef } from 'react';
+import { useState, useCallback, useEffect, useRef, useMemo } from 'react';
 import styled from 'styled-components';
 import { Button } from 'react95';
+import { useSettingsStore } from '@/stores/settingsStore';
+import { KeyboardSize } from '@/types';
 
 // ============================================
 // WIN95 GLOBAL ON-SCREEN KEYBOARD
 // Auto-appears when any input/textarea is focused.
 // Uses native value setter to work with React controlled inputs.
+// Size configurable via settings (compact / medium / large).
 // ============================================
+
+const SIZE_CONFIG: Record<KeyboardSize, {
+  keyWidth: number;
+  keyHeight: number;
+  gap: number;
+  fontSize: number;
+  padding: number;
+  wideKeyWidth: number;
+  spaceWidth: number;
+  enterWidth: number;
+  specialWidth: number;
+  hideFont: number;
+}> = {
+  compact: {
+    keyWidth: 24,
+    keyHeight: 28,
+    gap: 2,
+    fontSize: 10,
+    padding: 4,
+    wideKeyWidth: 36,
+    spaceWidth: 120,
+    enterWidth: 42,
+    specialWidth: 24,
+    hideFont: 9,
+  },
+  medium: {
+    keyWidth: 28,
+    keyHeight: 34,
+    gap: 3,
+    fontSize: 12,
+    padding: 6,
+    wideKeyWidth: 44,
+    spaceWidth: 150,
+    enterWidth: 50,
+    specialWidth: 28,
+    hideFont: 10,
+  },
+  large: {
+    keyWidth: 34,
+    keyHeight: 42,
+    gap: 4,
+    fontSize: 14,
+    padding: 8,
+    wideKeyWidth: 52,
+    spaceWidth: 180,
+    enterWidth: 60,
+    specialWidth: 34,
+    hideFont: 12,
+  },
+};
 
 const KeyboardOverlay = styled.div`
   position: fixed;
@@ -18,31 +71,31 @@ const KeyboardOverlay = styled.div`
   z-index: 3000;
 `;
 
-const KeyboardContainer = styled.div`
+const KeyboardContainer = styled.div<{ $padding: number }>`
   background: #c0c0c0;
   border-top: 2px solid;
   border-color: #dfdfdf #808080 #808080 #dfdfdf;
-  padding: 6px;
+  padding: ${props => props.$padding}px;
   user-select: none;
   -webkit-user-select: none;
 `;
 
-const KeyRow = styled.div`
+const KeyRow = styled.div<{ $gap: number }>`
   display: flex;
   justify-content: center;
-  gap: 3px;
-  margin-bottom: 3px;
+  gap: ${props => props.$gap}px;
+  margin-bottom: ${props => props.$gap}px;
 
   &:last-child {
     margin-bottom: 0;
   }
 `;
 
-const Key = styled(Button)<{ $width?: number }>`
-  min-width: ${props => props.$width || 28}px;
-  height: 34px;
+const Key = styled(Button)<{ $w: number; $h: number; $fs: number }>`
+  min-width: ${props => props.$w}px;
+  height: ${props => props.$h}px;
   padding: 0 2px;
-  font-size: 12px;
+  font-size: ${props => props.$fs}px;
   font-family: 'MS Sans Serif', 'Microsoft Sans Serif', Arial, sans-serif;
   display: flex;
   align-items: center;
@@ -59,8 +112,8 @@ const HideBar = styled.div`
   justify-content: flex-end;
 `;
 
-const HideButton = styled(Button)`
-  font-size: 10px;
+const HideButton = styled(Button)<{ $fs: number }>`
+  font-size: ${props => props.$fs}px;
   padding: 2px 12px;
   min-width: auto;
 `;
@@ -74,7 +127,6 @@ const ROWS_ALPHA = [
 const ROW_NUMBERS = ['1', '2', '3', '4', '5', '6', '7', '8', '9', '0'];
 
 // Set a React controlled input's value using the native setter
-// This triggers React's onChange handler reliably
 function setNativeValue(element: HTMLInputElement | HTMLTextAreaElement, value: string) {
   const isTextArea = element.tagName === 'TEXTAREA';
   const prototype = isTextArea
@@ -92,6 +144,9 @@ export default function Win95Keyboard() {
   const [visible, setVisible] = useState(false);
   const [shifted, setShifted] = useState(false);
   const activeRef = useRef<HTMLInputElement | HTMLTextAreaElement | null>(null);
+  const keyboard_size = useSettingsStore((s) => s.keyboard_size);
+
+  const cfg = useMemo(() => SIZE_CONFIG[keyboard_size] || SIZE_CONFIG.medium, [keyboard_size]);
 
   useEffect(() => {
     const handleFocus = (e: FocusEvent) => {
@@ -107,7 +162,6 @@ export default function Win95Keyboard() {
 
     const handleBlur = () => {
       // Delay to prevent keyboard from hiding when tapping keys
-      // The keyboard buttons will re-focus the input
     };
 
     document.addEventListener('focusin', handleFocus);
@@ -124,7 +178,6 @@ export default function Win95Keyboard() {
     const char = shifted ? key.toUpperCase() : key;
     setNativeValue(el, el.value + char);
     if (shifted) setShifted(false);
-    // Keep focus on the input
     el.focus();
   }, [shifted]);
 
@@ -137,7 +190,6 @@ export default function Win95Keyboard() {
 
   const handleEnter = useCallback(() => {
     if (!activeRef.current) return;
-    // For textareas, insert newline. For inputs, blur (submit).
     if (activeRef.current.tagName === 'TEXTAREA') {
       const el = activeRef.current;
       setNativeValue(el, el.value + '\n');
@@ -161,68 +213,67 @@ export default function Win95Keyboard() {
 
   return (
     <KeyboardOverlay
-      onMouseDown={(e) => {
-        // Prevent keyboard taps from stealing focus from the input
-        e.preventDefault();
-      }}
-      onTouchStart={(e) => {
-        e.preventDefault();
-      }}
+      onMouseDown={(e) => { e.preventDefault(); }}
+      onTouchStart={(e) => { e.preventDefault(); }}
     >
       <HideBar>
-        <HideButton onClick={handleHide}>Done</HideButton>
+        <HideButton $fs={cfg.hideFont} onClick={handleHide}>Done</HideButton>
       </HideBar>
-      <KeyboardContainer>
+      <KeyboardContainer $padding={cfg.padding}>
         {/* Number row */}
-        <KeyRow>
+        <KeyRow $gap={cfg.gap}>
           {ROW_NUMBERS.map((key) => (
-            <Key key={key} onClick={() => handleKey(key)}>{key}</Key>
+            <Key key={key} $w={cfg.keyWidth} $h={cfg.keyHeight} $fs={cfg.fontSize} onClick={() => handleKey(key)}>
+              {key}
+            </Key>
           ))}
-          <Key $width={44} onClick={handleBackspace}>{'<-'}</Key>
+          <Key $w={cfg.wideKeyWidth} $h={cfg.keyHeight} $fs={cfg.fontSize} onClick={handleBackspace}>
+            {'<-'}
+          </Key>
         </KeyRow>
 
         {/* QWERTY row */}
-        <KeyRow>
+        <KeyRow $gap={cfg.gap}>
           {ROWS_ALPHA[0].map((key) => (
-            <Key key={key} onClick={() => handleKey(key)}>
+            <Key key={key} $w={cfg.keyWidth} $h={cfg.keyHeight} $fs={cfg.fontSize} onClick={() => handleKey(key)}>
               {shifted ? key.toUpperCase() : key}
             </Key>
           ))}
         </KeyRow>
 
         {/* ASDF row */}
-        <KeyRow>
+        <KeyRow $gap={cfg.gap}>
           {ROWS_ALPHA[1].map((key) => (
-            <Key key={key} onClick={() => handleKey(key)}>
+            <Key key={key} $w={cfg.keyWidth} $h={cfg.keyHeight} $fs={cfg.fontSize} onClick={() => handleKey(key)}>
               {shifted ? key.toUpperCase() : key}
             </Key>
           ))}
         </KeyRow>
 
         {/* ZXCV row + shift */}
-        <KeyRow>
+        <KeyRow $gap={cfg.gap}>
           <Key
-            $width={44}
+            $w={cfg.wideKeyWidth} $h={cfg.keyHeight} $fs={cfg.fontSize}
             onClick={() => setShifted(!shifted)}
             active={shifted}
           >
             Shift
           </Key>
           {ROWS_ALPHA[2].map((key) => (
-            <Key key={key} onClick={() => handleKey(key)}>
+            <Key key={key} $w={cfg.keyWidth} $h={cfg.keyHeight} $fs={cfg.fontSize} onClick={() => handleKey(key)}>
               {shifted ? key.toUpperCase() : key}
             </Key>
           ))}
-          <Key $width={28} onClick={() => handleKey('.')}>.</Key>
-          <Key $width={28} onClick={() => handleKey('?')}>?</Key>
+          <Key $w={cfg.specialWidth} $h={cfg.keyHeight} $fs={cfg.fontSize} onClick={() => handleKey('.')}>.</Key>
+          <Key $w={cfg.specialWidth} $h={cfg.keyHeight} $fs={cfg.fontSize} onClick={() => handleKey('?')}>?</Key>
         </KeyRow>
 
         {/* Space + special keys row */}
-        <KeyRow>
-          <Key $width={28} onClick={() => handleKey(',')}>,</Key>
-          <Key $width={28} onClick={() => handleKey("'")}>&apos;</Key>
-          <Key $width={150} onClick={() => handleKey(' ')}>Space</Key>
-          <Key $width={50} onClick={handleEnter}>Enter</Key>
+        <KeyRow $gap={cfg.gap}>
+          <Key $w={cfg.specialWidth} $h={cfg.keyHeight} $fs={cfg.fontSize} onClick={() => handleKey(',')}>,</Key>
+          <Key $w={cfg.specialWidth} $h={cfg.keyHeight} $fs={cfg.fontSize} onClick={() => handleKey("'")}>&apos;</Key>
+          <Key $w={cfg.spaceWidth} $h={cfg.keyHeight} $fs={cfg.fontSize} onClick={() => handleKey(' ')}>Space</Key>
+          <Key $w={cfg.enterWidth} $h={cfg.keyHeight} $fs={cfg.fontSize} onClick={handleEnter}>Enter</Key>
         </KeyRow>
       </KeyboardContainer>
     </KeyboardOverlay>
