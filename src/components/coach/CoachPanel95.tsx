@@ -7,6 +7,7 @@ import { useCoachStore } from '@/stores/coachStore';
 import { useGoalStore } from '@/stores/goalStore';
 import { useLogStore } from '@/stores/logStore';
 import { useAnalyticsStore } from '@/stores/analyticsStore';
+import { useSettingsStore } from '@/stores/settingsStore';
 import { calculateLoggingStreak, calculateWeeklyScore } from '@/lib/metrics';
 
 // Windows 95 3D border effects
@@ -188,9 +189,142 @@ const SendToolbar = styled.div`
   justify-content: flex-end;
 `;
 
+const ContextModal = styled.div`
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  background: #c0c0c0;
+  border: 2px outset #ffffff;
+  box-shadow: 4px 4px 0 rgba(0, 0, 0, 0.5);
+  z-index: 2000;
+  min-width: 400px;
+  max-width: 90vw;
+`;
+
+const ContextModalHeader = styled.div`
+  background: linear-gradient(90deg, #000080, #1084d0);
+  color: white;
+  padding: 4px 8px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-weight: bold;
+  font-size: 12px;
+`;
+
+const ContextModalContent = styled.div`
+  padding: 12px;
+`;
+
+const ContextTextarea = styled.textarea`
+  width: 100%;
+  min-height: 150px;
+  font-family: 'MS Sans Serif', 'Segoe UI', Tahoma, sans-serif;
+  font-size: 11px;
+  padding: 8px;
+  border: 2px inset #808080;
+  resize: vertical;
+  margin-bottom: 8px;
+`;
+
+const ContextHint = styled.div`
+  font-size: 10px;
+  color: #808080;
+  margin-bottom: 8px;
+  line-height: 1.4;
+`;
+
+const ContextSection = styled.div`
+  margin-bottom: 12px;
+  padding: 8px;
+  background: #ffffff;
+  border: 1px inset #808080;
+`;
+
+const ContextSectionTitle = styled.div`
+  font-weight: bold;
+  font-size: 11px;
+  margin-bottom: 6px;
+  color: #000080;
+`;
+
+const ContextKnownItem = styled.div`
+  font-size: 11px;
+  padding: 2px 0;
+  display: flex;
+  align-items: flex-start;
+  gap: 4px;
+`;
+
+const ContextBullet = styled.span`
+  color: #008000;
+`;
+
+const ContextQuestion = styled.div`
+  margin-top: 8px;
+`;
+
+const ContextLabel = styled.label`
+  font-size: 10px;
+  font-weight: bold;
+  display: block;
+  margin-bottom: 2px;
+`;
+
+const ContextInput = styled.input`
+  width: 100%;
+  padding: 4px;
+  font-size: 11px;
+  border: 1px inset #808080;
+  margin-bottom: 6px;
+`;
+
+const ContextSmallTextarea = styled.textarea`
+  width: 100%;
+  min-height: 50px;
+  font-family: 'MS Sans Serif', 'Segoe UI', Tahoma, sans-serif;
+  font-size: 11px;
+  padding: 4px;
+  border: 1px inset #808080;
+  resize: vertical;
+  margin-bottom: 6px;
+`;
+
+const ContextButtonRow = styled.div`
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+`;
+
+const ContextButton = styled(Button)`
+  font-size: 11px;
+  min-width: 60px;
+`;
+
+const Overlay = styled.div`
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.3);
+  z-index: 1999;
+`;
+
 export function CoachPanel95() {
   const [inputValue, setInputValue] = useState('');
   const [selectedMessageId, setSelectedMessageId] = useState<string | null>(null);
+  const [showContextModal, setShowContextModal] = useState(false);
+  const [editingContext, setEditingContext] = useState('');
+  const [contextFields, setContextFields] = useState({
+    age: '',
+    situation: '',
+    workSchedule: '',
+    constraints: '',
+    preferences: '',
+    corrections: '',
+  });
   const chatEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
 
@@ -207,6 +341,7 @@ export function CoachPanel95() {
   const { goals, getActiveGoals } = useGoalStore();
   const { dailyLogs, tasks, habitCompletions, habits, getTodayHabits } = useLogStore();
   const { fetchAnalysis, overallHealth } = useAnalyticsStore();
+  const { coach_context, setCoachContext } = useSettingsStore();
 
   const activeGoals = getActiveGoals();
   const todayHabits = getTodayHabits();
@@ -216,9 +351,9 @@ export function CoachPanel95() {
   const weeklyScore = calculateWeeklyScore(tasks, goals, habitCompletions, habits, dailyLogs);
 
   useEffect(() => {
-    fetchSummary();
+    fetchSummary(coach_context);
     fetchAnalysis();
-  }, [fetchSummary, fetchAnalysis]);
+  }, [fetchSummary, fetchAnalysis, coach_context]);
 
   useEffect(() => {
     chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -230,8 +365,74 @@ export function CoachPanel95() {
 
   const handleSend = () => {
     if (!inputValue.trim()) return;
-    sendMessage(inputValue.trim());
+    sendMessage(inputValue.trim(), coach_context);
     setInputValue('');
+  };
+
+  const handleOpenContextModal = () => {
+    // Try to parse existing context into fields
+    const lines = coach_context.split('\n').filter(l => l.trim());
+    const fields = {
+      age: '',
+      situation: '',
+      workSchedule: '',
+      constraints: '',
+      preferences: '',
+      corrections: '',
+    };
+
+    // Simple parsing of existing context
+    lines.forEach(line => {
+      const lower = line.toLowerCase();
+      if (lower.includes('year') && lower.includes('old') || lower.includes('age')) {
+        fields.age = line;
+      } else if (lower.includes('work') && (lower.includes('hour') || lower.includes('job') || lower.includes('schedule'))) {
+        fields.workSchedule = line;
+      } else if (lower.includes('constraint') || lower.includes('challenge') || lower.includes('balance')) {
+        fields.constraints = fields.constraints ? fields.constraints + '\n' + line : line;
+      } else if (lower.includes('prefer') || lower.includes('better') || lower.includes('adhd') || lower.includes('learn')) {
+        fields.preferences = fields.preferences ? fields.preferences + '\n' + line : line;
+      } else if (lower.includes('correct') || lower.includes('actually') || lower.includes('wrong')) {
+        fields.corrections = fields.corrections ? fields.corrections + '\n' + line : line;
+      } else {
+        fields.situation = fields.situation ? fields.situation + '\n' + line : line;
+      }
+    });
+
+    setContextFields(fields);
+    setShowContextModal(true);
+  };
+
+  const handleSaveContext = () => {
+    // Build context from fields
+    const parts: string[] = [];
+
+    if (contextFields.age.trim()) {
+      parts.push(contextFields.age.trim());
+    }
+    if (contextFields.situation.trim()) {
+      parts.push(contextFields.situation.trim());
+    }
+    if (contextFields.workSchedule.trim()) {
+      parts.push(contextFields.workSchedule.trim());
+    }
+    if (contextFields.constraints.trim()) {
+      parts.push(`Constraints: ${contextFields.constraints.trim()}`);
+    }
+    if (contextFields.preferences.trim()) {
+      parts.push(`Preferences: ${contextFields.preferences.trim()}`);
+    }
+    if (contextFields.corrections.trim()) {
+      parts.push(`Corrections: ${contextFields.corrections.trim()}`);
+    }
+
+    const fullContext = parts.join('\n');
+    setCoachContext(fullContext);
+    setShowContextModal(false);
+  };
+
+  const updateContextField = (field: keyof typeof contextFields, value: string) => {
+    setContextFields(prev => ({ ...prev, [field]: value }));
   };
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
@@ -274,6 +475,13 @@ export function CoachPanel95() {
             <AlertBadge>{activeAlerts.length} Alert{activeAlerts.length > 1 ? 's' : ''}</AlertBadge>
           </StatItem>
         )}
+        <Button
+          size="sm"
+          onClick={handleOpenContextModal}
+          style={{ marginLeft: 'auto', fontSize: 10, padding: '2px 6px' }}
+        >
+          {coach_context ? 'Edit Context' : 'Add Context'}
+        </Button>
       </StatsBar>
 
       {/* Message List - Outlook Express style inbox */}
@@ -374,6 +582,113 @@ export function CoachPanel95() {
           </Button>
         </SendToolbar>
       </ComposeArea>
+
+      {/* Context Editor Modal */}
+      {showContextModal && (
+        <>
+          <Overlay onClick={() => setShowContextModal(false)} />
+          <ContextModal style={{ maxHeight: '85vh', overflow: 'auto' }}>
+            <ContextModalHeader>
+              <span>Coach Context - What I Know About You</span>
+              <Button
+                size="sm"
+                onClick={() => setShowContextModal(false)}
+                style={{ minWidth: 20, padding: '0 4px' }}
+              >
+                X
+              </Button>
+            </ContextModalHeader>
+            <ContextModalContent>
+              {/* What the system knows */}
+              <ContextSection>
+                <ContextSectionTitle>What I Currently Know (from your goals):</ContextSectionTitle>
+                {activeGoals.length > 0 ? (
+                  activeGoals.map((goal) => (
+                    <ContextKnownItem key={goal.goal_id}>
+                      <ContextBullet>•</ContextBullet>
+                      <span>
+                        <strong>{goal.title}</strong>: {goal.current_value}/{goal.target_value} {goal.unit}
+                        {goal.deadline && ` (due ${goal.deadline})`}
+                      </span>
+                    </ContextKnownItem>
+                  ))
+                ) : (
+                  <ContextKnownItem>
+                    <span style={{ color: '#808080' }}>No active goals yet</span>
+                  </ContextKnownItem>
+                )}
+                <ContextKnownItem style={{ marginTop: 8 }}>
+                  <ContextBullet>•</ContextBullet>
+                  <span>Logging streak: <strong>{streak} days</strong></span>
+                </ContextKnownItem>
+                <ContextKnownItem>
+                  <ContextBullet>•</ContextBullet>
+                  <span>Weekly score: <strong>{weeklyScore}</strong></span>
+                </ContextKnownItem>
+              </ContextSection>
+
+              {/* Clarification questions */}
+              <ContextSection>
+                <ContextSectionTitle>Tell me more (so I can give better advice):</ContextSectionTitle>
+
+                <ContextQuestion>
+                  <ContextLabel>How old are you? What's your situation?</ContextLabel>
+                  <ContextInput
+                    value={contextFields.age}
+                    onChange={(e) => updateContextField('age', e.target.value)}
+                    placeholder="e.g., I'm a 17-year-old high school senior"
+                  />
+                </ContextQuestion>
+
+                <ContextQuestion>
+                  <ContextLabel>What's your work/school schedule?</ContextLabel>
+                  <ContextInput
+                    value={contextFields.workSchedule}
+                    onChange={(e) => updateContextField('workSchedule', e.target.value)}
+                    placeholder="e.g., School 8-3, work 4-9 three days a week"
+                  />
+                </ContextQuestion>
+
+                <ContextQuestion>
+                  <ContextLabel>What are your main constraints/challenges?</ContextLabel>
+                  <ContextSmallTextarea
+                    value={contextFields.constraints}
+                    onChange={(e) => updateContextField('constraints', e.target.value)}
+                    placeholder="e.g., Balancing school + work + SAT prep, limited free time on weekdays"
+                  />
+                </ContextQuestion>
+
+                <ContextQuestion>
+                  <ContextLabel>How do you learn/work best?</ContextLabel>
+                  <ContextSmallTextarea
+                    value={contextFields.preferences}
+                    onChange={(e) => updateContextField('preferences', e.target.value)}
+                    placeholder="e.g., I have ADHD, work better in 25-min bursts, mornings are best for focus"
+                  />
+                </ContextQuestion>
+
+                <ContextQuestion>
+                  <ContextLabel>Anything I got wrong? Corrections?</ContextLabel>
+                  <ContextSmallTextarea
+                    value={contextFields.corrections}
+                    onChange={(e) => updateContextField('corrections', e.target.value)}
+                    placeholder="e.g., My SAT goal is actually 1500 not 1340, I already have $19k saved"
+                  />
+                </ContextQuestion>
+              </ContextSection>
+
+              <ContextButtonRow>
+                <ContextButton onClick={() => setShowContextModal(false)}>
+                  Cancel
+                </ContextButton>
+                <ContextButton onClick={handleSaveContext}>
+                  Save Context
+                </ContextButton>
+              </ContextButtonRow>
+            </ContextModalContent>
+          </ContextModal>
+        </>
+      )}
     </Container>
   );
 }

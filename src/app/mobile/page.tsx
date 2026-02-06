@@ -7,7 +7,7 @@ import { format } from 'date-fns';
 import { useRouter } from 'next/navigation';
 import { useLogStore } from '@/stores/logStore';
 import { useGoalStore } from '@/stores/goalStore';
-import { Goal, Habit, HabitWithStatus, GoalType, GoalStatus } from '@/types';
+import { Goal, Habit, HabitWithStatus, GoalType, GoalStatus, Task, TaskStatus } from '@/types';
 import {
   MobileContainer,
   MainWindow,
@@ -43,6 +43,7 @@ import {
   RefreshButton,
 } from '@/components/mobile/MobileShared';
 import { SyncStatus } from '@/stores/goalStore';
+import { IncrementType } from '@/types';
 import {
   Win95Icon,
 } from '@/components/mobile/Win95Icons';
@@ -162,10 +163,49 @@ const ButtonRow = styled.div`
   margin-top: 12px;
 `;
 
+const Toast = styled.div<{ $visible: boolean }>`
+  position: fixed;
+  bottom: 80px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: #008000;
+  color: #fff;
+  padding: 12px 20px;
+  border: 2px solid;
+  border-color: #00a000 #004000 #004000 #00a000;
+  font-size: 12px;
+  font-family: 'MS Sans Serif', sans-serif;
+  z-index: 1000;
+  opacity: ${props => props.$visible ? 1 : 0};
+  transition: opacity 0.3s ease;
+  pointer-events: ${props => props.$visible ? 'auto' : 'none'};
+  max-width: 90%;
+  text-align: center;
+`;
+
+const KeywordTag = styled.span`
+  display: inline-block;
+  background: #c0c0c0;
+  border: 1px solid #808080;
+  padding: 2px 6px;
+  margin: 2px;
+  font-size: 10px;
+`;
+
+const KeywordInput = styled.div`
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  padding: 4px;
+  border: 2px inset #dfdfdf;
+  background: #fff;
+  min-height: 32px;
+`;
+
 // Tab identifiers
 const TABS = {
   ACCOMPLISHMENTS: 0,
-  HABITS: 1,
+  TODO: 1,
   MONTHLY: 2,
   SUMMARY: 3,
 };
@@ -188,27 +228,52 @@ export default function MobilePage() {
   const [newGoalDeadline, setNewGoalDeadline] = useState('');
   const [newGoalStatus, setNewGoalStatus] = useState<GoalStatus>('active');
   const [newGoalType, setNewGoalType] = useState<GoalType>('monthly');
+  const [newGoalKeywords, setNewGoalKeywords] = useState<string[]>([]);
+  const [newKeywordInput, setNewKeywordInput] = useState('');
+  const [newGoalIncrementType, setNewGoalIncrementType] = useState<IncrementType>('count');
   const [newAccomplishment, setNewAccomplishment] = useState('');
+  const [toastMessage, setToastMessage] = useState<string | null>(null);
+  const [toastVisible, setToastVisible] = useState(false);
   const [editAccomplishmentText, setEditAccomplishmentText] = useState('');
   const [newHabitName, setNewHabitName] = useState('');
   const [newHabitTarget, setNewHabitTarget] = useState('');
   const [newHabitActive, setNewHabitActive] = useState(true);
   const [saving, setSaving] = useState(false);
 
+  // To Do sub-tab state
+  const [todoSubTab, setTodoSubTab] = useState<'habits' | 'tasks'>('habits');
+  const [taskViewDate, setTaskViewDate] = useState(today);
+  const [showAddTodo, setShowAddTodo] = useState(false);
+  const [addTodoType, setAddTodoType] = useState<'habit' | 'task'>('task');
+  const [showEditTask, setShowEditTask] = useState(false);
+  const [editingTask, setEditingTask] = useState<Task | null>(null);
+  const [newTaskDescription, setNewTaskDescription] = useState('');
+  const [newTaskPlannedDate, setNewTaskPlannedDate] = useState(today);
+  const [newTaskGoalId, setNewTaskGoalId] = useState<string | null>(null);
+  const [newTaskTimeEstimated, setNewTaskTimeEstimated] = useState('');
+  const [newTaskNotes, setNewTaskNotes] = useState('');
+
   const {
     habits,
     habitCompletions,
     dailyLogs,
+    tasks,
     fetchData,
     toggleHabit,
     saveDailyLog,
     updateHabit,
     deleteHabit,
+    saveTask,
+    deleteTask,
+    toggleTask,
+    addHabit,
     getTodayHabits,
     syncStatus: logSyncStatus,
+    goalUpdateMessage,
+    clearGoalUpdateMessage,
   } = useLogStore();
 
-  const { goals, fetchGoals, saveGoal, deleteGoal, syncStatus: goalSyncStatus } = useGoalStore();
+  const { goals, fetchGoals, saveGoal, deleteGoal, syncStatus: goalSyncStatus, subscribeToRealtime, unsubscribeFromRealtime } = useGoalStore();
 
   // Combined sync status - if either is offline/error, show that
   const syncStatus: SyncStatus =
@@ -241,7 +306,30 @@ export default function MobilePage() {
   useEffect(() => {
     fetchData();
     fetchGoals();
+    subscribeToRealtime();
+
+    return () => {
+      unsubscribeFromRealtime();
+    };
   }, []);
+
+  // Show toast when goal is auto-updated
+  useEffect(() => {
+    if (goalUpdateMessage) {
+      setToastMessage(goalUpdateMessage);
+      setToastVisible(true);
+
+      const timer = setTimeout(() => {
+        setToastVisible(false);
+        setTimeout(() => {
+          clearGoalUpdateMessage();
+          setToastMessage(null);
+        }, 300);
+      }, 4000);
+
+      return () => clearTimeout(timer);
+    }
+  }, [goalUpdateMessage, clearGoalUpdateMessage]);
 
   const activeHabits = getTodayHabits();
   const todayCompletions = habitCompletions.filter((c) => c.date === today);
@@ -285,6 +373,9 @@ export default function MobilePage() {
     setNewGoalDeadline(goal.deadline || '');
     setNewGoalStatus(goal.status || 'active');
     setNewGoalType(goal.type || 'monthly');
+    setNewGoalKeywords(goal.keywords || []);
+    setNewGoalIncrementType(goal.increment_type || 'count');
+    setNewKeywordInput('');
     setShowEditGoal(true);
   };
 
@@ -302,6 +393,8 @@ export default function MobilePage() {
         deadline: newGoalDeadline || editingGoal.deadline,
         status: newGoalStatus,
         type: newGoalType,
+        keywords: newGoalKeywords.length > 0 ? newGoalKeywords : undefined,
+        increment_type: newGoalIncrementType,
         updated_at: new Date().toISOString(),
       };
 
@@ -314,6 +407,8 @@ export default function MobilePage() {
       setNewGoalDeadline('');
       setNewGoalStatus('active');
       setNewGoalType('monthly');
+      setNewGoalKeywords([]);
+      setNewGoalIncrementType('count');
     } catch (err) {
       console.error('Failed to update goal:', err);
     } finally {
@@ -337,17 +432,36 @@ export default function MobilePage() {
     }
   };
 
+  // Auto-generate keywords from goal title
+  const generateKeywordsFromTitle = (title: string): string[] => {
+    // Common words to exclude
+    const stopWords = new Set(['a', 'an', 'the', 'to', 'of', 'in', 'for', 'and', 'or', 'my', 'i']);
+
+    // Extract words, filter out numbers and stop words, lowercase
+    const words = title
+      .toLowerCase()
+      .replace(/[^a-z\s]/g, ' ')
+      .split(/\s+/)
+      .filter(w => w.length > 1 && !stopWords.has(w));
+
+    // Return unique keywords
+    return [...new Set(words)];
+  };
+
   const handleAddGoal = async () => {
     if (!newGoalTitle.trim()) return;
     setSaving(true);
 
     try {
+      // Auto-generate keywords from title
+      const autoKeywords = generateKeywordsFromTitle(newGoalTitle);
+
       const goal: Goal = {
         goal_id: `goal_${Date.now()}`,
         title: newGoalTitle.trim(),
         type: 'monthly',
         parent_goal_id: null,
-        target_value: parseFloat(newGoalTarget) || 100,
+        target_value: parseFloat(newGoalTarget) || 1,
         starting_value: 0,
         current_value: 0,
         unit: '',
@@ -355,6 +469,8 @@ export default function MobilePage() {
         deadline: format(new Date(new Date().getFullYear(), new Date().getMonth() + 1, 0), 'yyyy-MM-dd'),
         status: 'active',
         priority: 1,
+        keywords: autoKeywords,
+        increment_type: 'count',
         created_at: new Date().toISOString(),
         updated_at: new Date().toISOString(),
       };
@@ -394,7 +510,8 @@ export default function MobilePage() {
         updated_at: new Date().toISOString(),
       };
 
-      await saveDailyLog(updatedLog);
+      // Pass goals and saveGoal callback for smart goal updates
+      await saveDailyLog(updatedLog, goals, saveGoal);
       setNewAccomplishment('');
       setShowAddAccomplishment(false);
     } catch (err) {
@@ -402,6 +519,162 @@ export default function MobilePage() {
     } finally {
       setSaving(false);
     }
+  };
+
+  // Helper functions for keyword management
+  const handleAddKeyword = () => {
+    const keyword = newKeywordInput.trim().toLowerCase();
+    if (keyword && !newGoalKeywords.includes(keyword)) {
+      setNewGoalKeywords([...newGoalKeywords, keyword]);
+      setNewKeywordInput('');
+    }
+  };
+
+  const handleRemoveKeyword = (keyword: string) => {
+    setNewGoalKeywords(newGoalKeywords.filter((k) => k !== keyword));
+  };
+
+  const handleKeywordKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === 'Enter' || e.key === ',') {
+      e.preventDefault();
+      handleAddKeyword();
+    }
+  };
+
+  // ============================================
+  // TASK HANDLERS
+  // ============================================
+
+  const resetTaskForm = () => {
+    setNewTaskDescription('');
+    setNewTaskPlannedDate(today);
+    setNewTaskGoalId(null);
+    setNewTaskTimeEstimated('');
+    setNewTaskNotes('');
+  };
+
+  const handleToggleTask = async (taskId: string) => {
+    await toggleTask(taskId);
+  };
+
+  const handleEditTask = (task: Task) => {
+    setEditingTask(task);
+    setNewTaskDescription(task.description);
+    setNewTaskPlannedDate(task.planned_date);
+    setNewTaskGoalId(task.goal_id);
+    setNewTaskTimeEstimated(task.time_estimated ? String(task.time_estimated) : '');
+    setNewTaskNotes(task.notes || '');
+    setShowEditTask(true);
+  };
+
+  const handleSaveEditedTask = async () => {
+    if (!editingTask || !newTaskDescription.trim()) return;
+    setSaving(true);
+
+    try {
+      const updatedTask: Task = {
+        ...editingTask,
+        description: newTaskDescription.trim(),
+        planned_date: newTaskPlannedDate,
+        goal_id: newTaskGoalId,
+        time_estimated: newTaskTimeEstimated ? parseInt(newTaskTimeEstimated) : null,
+        notes: newTaskNotes.trim() || null,
+      };
+
+      await saveTask(updatedTask);
+      setShowEditTask(false);
+      setEditingTask(null);
+      resetTaskForm();
+    } catch (err) {
+      console.error('Failed to update task:', err);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleDeleteTask = async () => {
+    if (!editingTask) return;
+    setSaving(true);
+
+    try {
+      await deleteTask(editingTask.task_id);
+      setShowEditTask(false);
+      setEditingTask(null);
+    } catch (err) {
+      console.error('Failed to delete task:', err);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleAddTask = async () => {
+    if (!newTaskDescription.trim()) return;
+    setSaving(true);
+
+    try {
+      const task: Task = {
+        task_id: `task_${Date.now()}`,
+        goal_id: newTaskGoalId,
+        description: newTaskDescription.trim(),
+        planned_date: newTaskPlannedDate,
+        completed_date: null,
+        status: 'planned',
+        time_estimated: newTaskTimeEstimated ? parseInt(newTaskTimeEstimated) : null,
+        time_actual: null,
+        difficulty: null,
+        notes: newTaskNotes.trim() || null,
+        created_at: new Date().toISOString(),
+      };
+
+      await saveTask(task);
+      resetTaskForm();
+      setShowAddTodo(false);
+    } catch (err) {
+      console.error('Failed to add task:', err);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleAddHabitFromTodo = async () => {
+    if (!newHabitName.trim()) return;
+    setSaving(true);
+
+    try {
+      await addHabit({
+        habit_id: `habit_${Date.now()}`,
+        name: newHabitName.trim(),
+        target_minutes: newHabitTarget ? parseInt(newHabitTarget) : null,
+        days_active: ['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun'],
+        active: true,
+        sort_order: habits.length,
+        created_at: new Date().toISOString(),
+      });
+      setNewHabitName('');
+      setNewHabitTarget('');
+      setShowAddTodo(false);
+      setTodoSubTab('habits');
+    } catch (err) {
+      console.error('Failed to add habit:', err);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleTaskDatePrev = () => {
+    const d = new Date(taskViewDate + 'T00:00:00');
+    d.setDate(d.getDate() - 1);
+    setTaskViewDate(format(d, 'yyyy-MM-dd'));
+  };
+
+  const handleTaskDateNext = () => {
+    const d = new Date(taskViewDate + 'T00:00:00');
+    d.setDate(d.getDate() + 1);
+    setTaskViewDate(format(d, 'yyyy-MM-dd'));
+  };
+
+  const handleTaskDateToday = () => {
+    setTaskViewDate(today);
   };
 
   // Open edit popup for a habit
@@ -531,8 +804,8 @@ export default function MobilePage() {
     switch (activeTab) {
       case TABS.ACCOMPLISHMENTS:
         return 'Accomplishments';
-      case TABS.HABITS:
-        return 'Habits';
+      case TABS.TODO:
+        return 'To Do';
       case TABS.MONTHLY:
         return 'Monthly Goals';
       case TABS.SUMMARY:
@@ -596,10 +869,10 @@ export default function MobilePage() {
           </EmptyStateIcon>
           <EmptyStateTitle>No habits yet!</EmptyStateTitle>
           <EmptyStateText>
-            Build good habits one day at a time. Add your first habit in Settings.
+            Build good habits one day at a time.
           </EmptyStateText>
-          <Button onClick={() => router.push('/mobile/settings')}>
-            Go to Settings
+          <Button onClick={() => { setAddTodoType('habit'); setShowAddTodo(true); }}>
+            + Add Habit
           </Button>
         </EmptyState>
       );
@@ -645,6 +918,108 @@ export default function MobilePage() {
             );
           })}
         </ListContainer>
+      </>
+    );
+  };
+
+  // Render Tasks sub-view (day-specific to-do items)
+  const renderTasks = () => {
+    const dateTasks = tasks.filter((t) => t.planned_date === taskViewDate);
+    const completed = dateTasks.filter((t) => t.status === 'completed').length;
+    const isToday = taskViewDate === today;
+
+    return (
+      <>
+        {/* Date navigation */}
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '8px 0' }}>
+          <Button size="sm" onClick={handleTaskDatePrev}>&#9664;</Button>
+          <span
+            style={{ fontSize: 12, fontWeight: 'bold', cursor: 'pointer' }}
+            onClick={handleTaskDateToday}
+          >
+            {isToday ? 'Today' : format(new Date(taskViewDate + 'T00:00:00'), 'MMM d, yyyy')}
+          </span>
+          <Button size="sm" onClick={handleTaskDateNext}>&#9654;</Button>
+        </div>
+
+        {dateTasks.length === 0 ? (
+          <EmptyState>
+            <EmptyStateIcon>
+              <Win95Icon $bg="#ADD8E6" $color="#000080" style={{ width: 40, height: 40, fontSize: 24 }}>&#9744;</Win95Icon>
+            </EmptyStateIcon>
+            <EmptyStateTitle>No tasks for this day</EmptyStateTitle>
+            <EmptyStateText>
+              Add a to-do item to plan your day.
+            </EmptyStateText>
+            <Button onClick={() => { setAddTodoType('task'); setShowAddTodo(true); }}>
+              + Add Task
+            </Button>
+          </EmptyState>
+        ) : (
+          <>
+            <SectionHeader>
+              {isToday ? 'Today' : format(new Date(taskViewDate + 'T00:00:00'), 'MMM d')} &mdash; {completed}/{dateTasks.length} done
+            </SectionHeader>
+            <ListContainer>
+              {dateTasks.map((task) => {
+                const isCompleted = task.status === 'completed';
+                return (
+                  <ListItem
+                    key={task.task_id}
+                    $completed={isCompleted}
+                    $clickable
+                    onClick={() => handleToggleTask(task.task_id)}
+                  >
+                    <Checkbox $checked={isCompleted}>
+                      {isCompleted && '\u2713'}
+                    </Checkbox>
+                    <ListItemText $completed={isCompleted}>
+                      {task.description}
+                    </ListItemText>
+                    {task.time_estimated && (
+                      <ListItemMeta>{task.time_estimated}m</ListItemMeta>
+                    )}
+                    <Button
+                      size="sm"
+                      style={{ marginLeft: 8, minWidth: 32, padding: '2px 6px' }}
+                      onClick={(e) => { e.stopPropagation(); handleEditTask(task); }}
+                    >
+                      &#9998;
+                    </Button>
+                  </ListItem>
+                );
+              })}
+            </ListContainer>
+          </>
+        )}
+
+        <AddButton onClick={() => { setAddTodoType('task'); setShowAddTodo(true); }}>
+          + Add Task
+        </AddButton>
+      </>
+    );
+  };
+
+  // Render To Do tab wrapper with sub-tabs
+  const renderTodo = () => {
+    return (
+      <>
+        <ToggleGroup>
+          <ToggleButton
+            $active={todoSubTab === 'habits'}
+            onClick={() => setTodoSubTab('habits')}
+          >
+            Habits
+          </ToggleButton>
+          <ToggleButton
+            $active={todoSubTab === 'tasks'}
+            onClick={() => setTodoSubTab('tasks')}
+          >
+            Tasks
+          </ToggleButton>
+        </ToggleGroup>
+
+        {todoSubTab === 'habits' ? renderHabits() : renderTasks()}
       </>
     );
   };
@@ -760,6 +1135,11 @@ export default function MobilePage() {
                   +
                 </TitleBarButton>
               )}
+              {activeTab === TABS.TODO && (
+                <TitleBarButton size="sm" onClick={() => setShowAddTodo(true)}>
+                  +
+                </TitleBarButton>
+              )}
               {activeTab === TABS.MONTHLY && (
                 <TitleBarButton size="sm" onClick={() => setShowAddGoal(true)}>
                   +
@@ -790,7 +1170,7 @@ export default function MobilePage() {
             </SyncStatusBar>
             <ScrollArea>
               {activeTab === TABS.SUMMARY && renderGoalSummary()}
-              {activeTab === TABS.HABITS && renderHabits()}
+              {activeTab === TABS.TODO && renderTodo()}
               {activeTab === TABS.MONTHLY && renderMonthlyGoals()}
               {activeTab === TABS.ACCOMPLISHMENTS && renderAccomplishments()}
             </ScrollArea>
@@ -809,13 +1189,13 @@ export default function MobilePage() {
             <TabLabel>Wins</TabLabel>
           </BottomTab>
           <BottomTab
-            $active={activeTab === TABS.HABITS}
-            onClick={() => setActiveTab(TABS.HABITS)}
+            $active={activeTab === TABS.TODO}
+            onClick={() => setActiveTab(TABS.TODO)}
           >
             <TabIcon>
               <Win95Icon $bg="#90EE90" $color="#008000" style={{ width: 18, height: 18, fontSize: 10 }}>✓</Win95Icon>
             </TabIcon>
-            <TabLabel>Habits</TabLabel>
+            <TabLabel>To Do</TabLabel>
           </BottomTab>
           <BottomTab
             $active={activeTab === TABS.MONTHLY}
@@ -953,6 +1333,44 @@ export default function MobilePage() {
                   <option value="completed">Completed</option>
                   <option value="paused">Paused</option>
                   <option value="abandoned">Abandoned</option>
+                </StyledSelect>
+              </FormRow>
+              <FormRow>
+                <FormLabel>Smart Keywords (for auto-tracking)</FormLabel>
+                <KeywordInput>
+                  {newGoalKeywords.map((keyword) => (
+                    <KeywordTag key={keyword}>
+                      {keyword}
+                      <span
+                        style={{ marginLeft: 4, cursor: 'pointer' }}
+                        onClick={() => handleRemoveKeyword(keyword)}
+                      >
+                        ×
+                      </span>
+                    </KeywordTag>
+                  ))}
+                  <StyledInput
+                    style={{ flex: 1, minWidth: 80, border: 'none', background: 'transparent' }}
+                    value={newKeywordInput}
+                    onChange={(e) => setNewKeywordInput(e.target.value)}
+                    onKeyDown={handleKeywordKeyDown}
+                    onBlur={handleAddKeyword}
+                    placeholder="Add keyword..."
+                  />
+                </KeywordInput>
+                <span style={{ fontSize: 10, color: '#808080' }}>
+                  Press Enter or comma to add. E.g., sat, test, practice
+                </span>
+              </FormRow>
+              <FormRow>
+                <FormLabel>Increment Type</FormLabel>
+                <StyledSelect
+                  value={newGoalIncrementType}
+                  onChange={(e) => setNewGoalIncrementType(e.target.value as IncrementType)}
+                >
+                  <option value="count">Count (one, two, 3...)</option>
+                  <option value="value">Value ($50, 100 dollars...)</option>
+                  <option value="time">Time (2 hours, 30 minutes...)</option>
                 </StyledSelect>
               </FormRow>
               <ButtonRow>
@@ -1130,6 +1548,221 @@ export default function MobilePage() {
           </PopupWindow>
         </PopupOverlay>
       )}
+
+      {/* Add To-Do Popup */}
+      {showAddTodo && (
+        <PopupOverlay onClick={() => setShowAddTodo(false)}>
+          <PopupWindow onClick={(e) => e.stopPropagation()}>
+            <TitleBar>
+              <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                <Win95Icon $bg="#90EE90" $color="#008000" style={{ width: 14, height: 14, fontSize: 8 }}>+</Win95Icon>
+                Add To Do Item
+              </span>
+              <TitleBarButton size="sm" onClick={() => setShowAddTodo(false)}>
+                &#10005;
+              </TitleBarButton>
+            </TitleBar>
+            <PopupContent>
+              <FormRow>
+                <FormLabel>Type</FormLabel>
+                <ToggleGroup>
+                  <ToggleButton
+                    $active={addTodoType === 'habit'}
+                    onClick={() => setAddTodoType('habit')}
+                  >
+                    Habit
+                  </ToggleButton>
+                  <ToggleButton
+                    $active={addTodoType === 'task'}
+                    onClick={() => setAddTodoType('task')}
+                  >
+                    To-Do Item
+                  </ToggleButton>
+                </ToggleGroup>
+              </FormRow>
+
+              {addTodoType === 'habit' ? (
+                <>
+                  <FormRow>
+                    <FormLabel>Habit Name</FormLabel>
+                    <StyledInput
+                      value={newHabitName}
+                      onChange={(e) => setNewHabitName(e.target.value)}
+                      placeholder="e.g., Exercise daily"
+                      autoFocus
+                    />
+                  </FormRow>
+                  <FormRow>
+                    <FormLabel>Target Minutes (optional)</FormLabel>
+                    <StyledInput
+                      type="number"
+                      value={newHabitTarget}
+                      onChange={(e) => setNewHabitTarget(e.target.value)}
+                      placeholder="e.g., 30"
+                    />
+                  </FormRow>
+                  <Button
+                    primary
+                    fullWidth
+                    onClick={handleAddHabitFromTodo}
+                    disabled={saving || !newHabitName.trim()}
+                  >
+                    {saving ? 'Saving...' : 'Add Habit'}
+                  </Button>
+                </>
+              ) : (
+                <>
+                  <FormRow>
+                    <FormLabel>Description</FormLabel>
+                    <StyledInput
+                      value={newTaskDescription}
+                      onChange={(e) => setNewTaskDescription(e.target.value)}
+                      placeholder="e.g., Finish chapter 5 review"
+                      autoFocus
+                    />
+                  </FormRow>
+                  <FormRow>
+                    <FormLabel>Planned Date</FormLabel>
+                    <StyledInput
+                      type="date"
+                      value={newTaskPlannedDate}
+                      onChange={(e) => setNewTaskPlannedDate(e.target.value)}
+                    />
+                  </FormRow>
+                  <FormRow>
+                    <FormLabel>Link to Goal (optional)</FormLabel>
+                    <StyledSelect
+                      value={newTaskGoalId || ''}
+                      onChange={(e) => setNewTaskGoalId(e.target.value || null)}
+                    >
+                      <option value="">None</option>
+                      {activeGoals.map((g) => (
+                        <option key={g.goal_id} value={g.goal_id}>{g.title}</option>
+                      ))}
+                    </StyledSelect>
+                  </FormRow>
+                  <FormRow>
+                    <FormLabel>Estimated Time (minutes, optional)</FormLabel>
+                    <StyledInput
+                      type="number"
+                      value={newTaskTimeEstimated}
+                      onChange={(e) => setNewTaskTimeEstimated(e.target.value)}
+                      placeholder="e.g., 45"
+                    />
+                  </FormRow>
+                  <Button
+                    primary
+                    fullWidth
+                    onClick={handleAddTask}
+                    disabled={saving || !newTaskDescription.trim()}
+                  >
+                    {saving ? 'Saving...' : 'Add Task'}
+                  </Button>
+                </>
+              )}
+            </PopupContent>
+          </PopupWindow>
+        </PopupOverlay>
+      )}
+
+      {/* Edit Task Popup */}
+      {showEditTask && editingTask && (
+        <PopupOverlay onClick={() => setShowEditTask(false)}>
+          <PopupWindow onClick={(e) => e.stopPropagation()}>
+            <TitleBar>
+              <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                <Win95Icon $bg="#FFD700" $color="#000" style={{ width: 14, height: 14, fontSize: 8 }}>&#9998;</Win95Icon>
+                Edit Task
+              </span>
+              <TitleBarButton size="sm" onClick={() => setShowEditTask(false)}>
+                &#10005;
+              </TitleBarButton>
+            </TitleBar>
+            <PopupContent>
+              <FormRow>
+                <FormLabel>Description</FormLabel>
+                <StyledInput
+                  value={newTaskDescription}
+                  onChange={(e) => setNewTaskDescription(e.target.value)}
+                  placeholder="Task description"
+                  autoFocus
+                />
+              </FormRow>
+              <FormRow>
+                <FormLabel>Planned Date</FormLabel>
+                <StyledInput
+                  type="date"
+                  value={newTaskPlannedDate}
+                  onChange={(e) => setNewTaskPlannedDate(e.target.value)}
+                />
+              </FormRow>
+              <FormRow>
+                <FormLabel>Status</FormLabel>
+                <StyledSelect
+                  value={editingTask.status}
+                  onChange={(e) => setEditingTask({ ...editingTask, status: e.target.value as TaskStatus })}
+                >
+                  <option value="planned">Planned</option>
+                  <option value="completed">Completed</option>
+                  <option value="skipped">Skipped</option>
+                  <option value="rolled">Rolled</option>
+                </StyledSelect>
+              </FormRow>
+              <FormRow>
+                <FormLabel>Link to Goal (optional)</FormLabel>
+                <StyledSelect
+                  value={newTaskGoalId || ''}
+                  onChange={(e) => setNewTaskGoalId(e.target.value || null)}
+                >
+                  <option value="">None</option>
+                  {activeGoals.map((g) => (
+                    <option key={g.goal_id} value={g.goal_id}>{g.title}</option>
+                  ))}
+                </StyledSelect>
+              </FormRow>
+              <FormRow>
+                <FormLabel>Estimated Time (minutes)</FormLabel>
+                <StyledInput
+                  type="number"
+                  value={newTaskTimeEstimated}
+                  onChange={(e) => setNewTaskTimeEstimated(e.target.value)}
+                  placeholder="Minutes"
+                />
+              </FormRow>
+              <FormRow>
+                <FormLabel>Notes</FormLabel>
+                <StyledTextArea
+                  value={newTaskNotes}
+                  onChange={(e) => setNewTaskNotes(e.target.value)}
+                  placeholder="Optional notes..."
+                />
+              </FormRow>
+              <ButtonRow>
+                <Button
+                  primary
+                  style={{ flex: 1 }}
+                  onClick={handleSaveEditedTask}
+                  disabled={saving || !newTaskDescription.trim()}
+                >
+                  {saving ? 'Saving...' : 'Save'}
+                </Button>
+                <Button
+                  style={{ flex: 1, color: '#800000' }}
+                  onClick={handleDeleteTask}
+                  disabled={saving}
+                >
+                  Delete
+                </Button>
+              </ButtonRow>
+            </PopupContent>
+          </PopupWindow>
+        </PopupOverlay>
+      )}
+
+      {/* Goal Update Toast */}
+      <Toast $visible={toastVisible}>
+        {toastMessage}
+      </Toast>
     </>
   );
 }

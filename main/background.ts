@@ -80,22 +80,28 @@ async function callClaudeCLI(systemPrompt: string, userMessage: string): Promise
   return new Promise((resolve, reject) => {
     console.log('[Claude CLI] Starting...');
 
-    // Build command for Windows
-    const args = [
-      '--print',
-      '--model', 'haiku',
-      '--system-prompt', systemPrompt,
-      userMessage
-    ];
+    // Combine system prompt and user message, flatten for cmd.exe
+    const flatSystemPrompt = systemPrompt.replace(/\n/g, ' ').replace(/\s+/g, ' ').trim();
+    const flatUserMessage = userMessage.replace(/\n/g, ' ').replace(/\s+/g, ' ').trim();
+    const fullPrompt = `${flatSystemPrompt} USER: ${flatUserMessage}`;
 
-    const proc = spawn('claude', args, {
-      shell: true,
+    console.log('[Claude CLI] Prompt length:', fullPrompt.length);
+
+    // Use cmd.exe with -p flag (print mode, no conversation)
+    const proc = spawn('cmd.exe', ['/c', 'claude', '-p', fullPrompt], {
       env: { ...process.env },
+      stdio: ['ignore', 'pipe', 'pipe'],
       windowsHide: true,
     });
 
     let stdout = '';
     let stderr = '';
+
+    // Timeout after 60 seconds
+    const timeout = setTimeout(() => {
+      proc.kill();
+      reject(new Error('Claude CLI timeout after 60s'));
+    }, 60000);
 
     proc.stdout.on('data', (data) => {
       stdout += data.toString();
@@ -106,9 +112,18 @@ async function callClaudeCLI(systemPrompt: string, userMessage: string): Promise
     });
 
     proc.on('close', (code) => {
+      clearTimeout(timeout);
       console.log('[Claude CLI] Exited with code:', code);
+
+      // Filter out hook errors from output
+      const cleanOutput = stdout
+        .split('\n')
+        .filter(line => !line.includes('SessionEnd hook'))
+        .join('\n')
+        .trim();
+
       if (code === 0) {
-        resolve(stdout.trim());
+        resolve(cleanOutput);
       } else {
         console.error('[Claude CLI] stderr:', stderr);
         reject(new Error(`Claude CLI failed: ${stderr || 'Unknown error'}`));
@@ -116,6 +131,7 @@ async function callClaudeCLI(systemPrompt: string, userMessage: string): Promise
     });
 
     proc.on('error', (err) => {
+      clearTimeout(timeout);
       console.error('[Claude CLI] Spawn error:', err);
       reject(err);
     });
@@ -123,8 +139,8 @@ async function callClaudeCLI(systemPrompt: string, userMessage: string): Promise
 }
 
 // Build system prompt with context
-function buildCoachPrompt(context: any): string {
-  return `You are a supportive productivity coach for ${context.user}.
+function buildCoachPrompt(context: any, userContext?: string): string {
+  let prompt = `You are a supportive productivity coach for ${context.user}.
 
 CURRENT GOALS:
 ${Object.entries(context.goals).map(([key, g]: [string, any]) => {
@@ -135,9 +151,21 @@ ${Object.entries(context.goals).map(([key, g]: [string, any]) => {
   return `- ${g.name}`;
 }).join('\n')}
 
-DEADLINE: ${context.planEndDate}
+DEADLINE: ${context.planEndDate}`;
+
+  // Add user-provided context if available
+  if (userContext && userContext.trim()) {
+    prompt += `
+
+ADDITIONAL CONTEXT FROM USER:
+${userContext.trim()}`;
+  }
+
+  prompt += `
 
 Be encouraging but realistic. Give specific, actionable advice. Keep responses concise (2-4 sentences unless asked for more).`;
+
+  return prompt;
 }
 
 // Build parsing prompt
@@ -393,10 +421,10 @@ ipcMain.handle('update-context', async (_, updates: any) => {
 });
 
 // Chat with coach
-ipcMain.handle('coach-chat', async (_, message: string) => {
+ipcMain.handle('coach-chat', async (_, message: string, userContext?: string) => {
   try {
     const context = readContext();
-    const systemPrompt = buildCoachPrompt(context);
+    const systemPrompt = buildCoachPrompt(context, userContext);
     const response = await callClaudeCLI(systemPrompt, message);
     return { success: true, response };
   } catch (error: any) {

@@ -1,0 +1,8 @@
+node_modules
+.next
+dist
+release
+main
+*.exe
+supabase.exe
+.git

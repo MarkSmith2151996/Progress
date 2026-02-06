@@ -74,20 +74,24 @@ function writeContext(context) {
 async function callClaudeCLI(systemPrompt, userMessage) {
     return new Promise((resolve, reject) => {
         console.log('[Claude CLI] Starting...');
-        // Build command for Windows
-        const args = [
-            '--print',
-            '--model', 'haiku',
-            '--system-prompt', systemPrompt,
-            userMessage
-        ];
-        const proc = (0, child_process_1.spawn)('claude', args, {
-            shell: true,
+        // Combine system prompt and user message, flatten for cmd.exe
+        const flatSystemPrompt = systemPrompt.replace(/\n/g, ' ').replace(/\s+/g, ' ').trim();
+        const flatUserMessage = userMessage.replace(/\n/g, ' ').replace(/\s+/g, ' ').trim();
+        const fullPrompt = `${flatSystemPrompt} USER: ${flatUserMessage}`;
+        console.log('[Claude CLI] Prompt length:', fullPrompt.length);
+        // Use cmd.exe with -p flag (print mode, no conversation)
+        const proc = (0, child_process_1.spawn)('cmd.exe', ['/c', 'claude', '-p', fullPrompt], {
             env: { ...process.env },
+            stdio: ['ignore', 'pipe', 'pipe'],
             windowsHide: true,
         });
         let stdout = '';
         let stderr = '';
+        // Timeout after 60 seconds
+        const timeout = setTimeout(() => {
+            proc.kill();
+            reject(new Error('Claude CLI timeout after 60s'));
+        }, 60000);
         proc.stdout.on('data', (data) => {
             stdout += data.toString();
         });
@@ -95,9 +99,16 @@ async function callClaudeCLI(systemPrompt, userMessage) {
             stderr += data.toString();
         });
         proc.on('close', (code) => {
+            clearTimeout(timeout);
             console.log('[Claude CLI] Exited with code:', code);
+            // Filter out hook errors from output
+            const cleanOutput = stdout
+                .split('\n')
+                .filter(line => !line.includes('SessionEnd hook'))
+                .join('\n')
+                .trim();
             if (code === 0) {
-                resolve(stdout.trim());
+                resolve(cleanOutput);
             }
             else {
                 console.error('[Claude CLI] stderr:', stderr);
@@ -105,14 +116,15 @@ async function callClaudeCLI(systemPrompt, userMessage) {
             }
         });
         proc.on('error', (err) => {
+            clearTimeout(timeout);
             console.error('[Claude CLI] Spawn error:', err);
             reject(err);
         });
     });
 }
 // Build system prompt with context
-function buildCoachPrompt(context) {
-    return `You are a supportive productivity coach for ${context.user}.
+function buildCoachPrompt(context, userContext) {
+    let prompt = `You are a supportive productivity coach for ${context.user}.
 
 CURRENT GOALS:
 ${Object.entries(context.goals).map(([key, g]) => {
@@ -127,9 +139,18 @@ ${Object.entries(context.goals).map(([key, g]) => {
         return `- ${g.name}`;
     }).join('\n')}
 
-DEADLINE: ${context.planEndDate}
+DEADLINE: ${context.planEndDate}`;
+    // Add user-provided context if available
+    if (userContext && userContext.trim()) {
+        prompt += `
+
+ADDITIONAL CONTEXT FROM USER:
+${userContext.trim()}`;
+    }
+    prompt += `
 
 Be encouraging but realistic. Give specific, actionable advice. Keep responses concise (2-4 sentences unless asked for more).`;
+    return prompt;
 }
 // Build parsing prompt
 function buildParsePrompt(context) {
@@ -352,10 +373,10 @@ electron_1.ipcMain.handle('update-context', async (_, updates) => {
     return newContext;
 });
 // Chat with coach
-electron_1.ipcMain.handle('coach-chat', async (_, message) => {
+electron_1.ipcMain.handle('coach-chat', async (_, message, userContext) => {
     try {
         const context = readContext();
-        const systemPrompt = buildCoachPrompt(context);
+        const systemPrompt = buildCoachPrompt(context, userContext);
         const response = await callClaudeCLI(systemPrompt, message);
         return { success: true, response };
     }

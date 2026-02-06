@@ -155,6 +155,11 @@ export function saveTask(task: Task): void {
   writeCollection('tasks', tasks);
 }
 
+export function deleteTask(taskId: string): void {
+  const tasks = getTasks();
+  writeCollection('tasks', tasks.filter((t) => t.task_id !== taskId));
+}
+
 // ============================================
 // STORAGE STATUS HELPERS
 // ============================================

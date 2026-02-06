@@ -1,6 +1,7 @@
 appId: com.progress-tracker.app
 productName: Progress Tracker
 copyright: Copyright © 2026
+afterPack: ./scripts/afterPack.js
 directories:
   output: dist
   buildResources: resources
@@ -16,7 +17,7 @@ extraResources:
     to: standalone
     filter:
       - "**/*"
-      - "**/node_modules/**"
+      - "!**/*.map"
 
 asar: true
 asarUnpack:

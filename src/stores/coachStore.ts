@@ -19,8 +19,8 @@ interface CoachState {
   setAlerts: (alerts: Alert[]) => void;
   dismissAlert: (alertId: string) => void;
 
-  fetchSummary: () => Promise<void>;
-  sendMessage: (content: string) => Promise<void>;
+  fetchSummary: (userContext?: string) => Promise<void>;
+  sendMessage: (content: string, userContext?: string) => Promise<void>;
 }
 
 export const useCoachStore = create<CoachState>((set, get) => ({
@@ -49,13 +49,13 @@ export const useCoachStore = create<CoachState>((set, get) => ({
       ),
     })),
 
-  fetchSummary: async () => {
+  fetchSummary: async (userContext?: string) => {
     set({ isLoadingSummary: true, error: null });
 
     if (isElectron) {
       // Use Electron IPC
       try {
-        const result = await window.electronAPI.coachChat('Give me a brief status update on my progress in 2-3 sentences.');
+        const result = await window.electronAPI.coachChat('Give me a brief status update on my progress in 2-3 sentences.', userContext);
         if (result.success) {
           set({
             summary: result.response,
@@ -97,7 +97,7 @@ export const useCoachStore = create<CoachState>((set, get) => ({
     }
   },
 
-  sendMessage: async (content) => {
+  sendMessage: async (content, userContext?: string) => {
     const userMessage: ChatMessage = {
       id: `msg_${Date.now()}`,
       role: 'user',
@@ -111,7 +111,7 @@ export const useCoachStore = create<CoachState>((set, get) => ({
     if (isElectron) {
       // Use Electron IPC
       try {
-        const result = await window.electronAPI.coachChat(content);
+        const result = await window.electronAPI.coachChat(content, userContext);
 
         const assistantMessage: ChatMessage = {
           id: `msg_${Date.now() + 1}`,

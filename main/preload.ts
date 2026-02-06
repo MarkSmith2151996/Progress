@@ -6,7 +6,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   updateContext: (updates: any) => ipcRenderer.invoke('update-context', updates),
 
   // Coach - Claude CLI integration
-  coachChat: (message: string) => ipcRenderer.invoke('coach-chat', message),
+  coachChat: (message: string, userContext?: string) => ipcRenderer.invoke('coach-chat', message, userContext),
 
   // Natural language parsing
   parseInput: (input: string) => ipcRenderer.invoke('parse-input', input),
@@ -30,7 +30,7 @@ declare global {
       updateContext: (updates: any) => Promise<any>;
 
       // Coach
-      coachChat: (message: string) => Promise<{ success: boolean; response?: string; error?: string }>;
+      coachChat: (message: string, userContext?: string) => Promise<{ success: boolean; response?: string; error?: string }>;
 
       // Parsing
       parseInput: (input: string) => Promise<{ success: boolean; parsed?: any; error?: string }>;

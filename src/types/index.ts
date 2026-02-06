@@ -10,6 +10,7 @@ export type AlertLevel = 'critical' | 'warning' | 'info' | 'positive';
 export type FieldType = 'number' | 'string' | 'boolean' | 'enum';
 export type AppliesTo = 'daily_log' | 'task' | 'session' | 'goal';
 export type ExternalFactorType = 'illness' | 'exam_period' | 'heavy_work' | 'life_event' | 'travel';
+export type IncrementType = 'count' | 'value' | 'time';
 
 // ============================================
 // GOALS
@@ -28,6 +29,8 @@ export interface Goal {
   deadline: string;
   status: GoalStatus;
   priority: number;
+  keywords?: string[];  // For smart goal matching: ['sat', 'test', 'practice']
+  increment_type?: IncrementType;  // How to extract delta: 'count' | 'value' | 'time'
   created_at: string;
   updated_at: string;
 }

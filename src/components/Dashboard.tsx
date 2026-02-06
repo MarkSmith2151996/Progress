@@ -19,6 +19,7 @@ import { SettingsPanel95 } from './settings/SettingsPanel95';
 import { RemindersPanel95 } from './settings/RemindersPanel95';
 import { DebugPanel95 } from './debug/DebugPanel95';
 import { QuickLog95 } from './QuickLog95';
+import { AccomplishmentsPanel95 } from './AccomplishmentsPanel95';
 import { useGoalStore } from '@/stores/goalStore';
 import { useLogStore } from '@/stores/logStore';
 import { useSettingsStore } from '@/stores/settingsStore';
@@ -78,6 +79,7 @@ export function Dashboard() {
   const [showDebug, setShowDebug] = useState(false);
   const [showQuickLog, setShowQuickLog] = useState(false);
   const [showReminders, setShowReminders] = useState(false);
+  const [showAccomplishments, setShowAccomplishments] = useState(false);
   const [coachMinimized, setCoachMinimized] = useState(false);
   const [currentMonth, setCurrentMonth] = useState(new Date());
 
@@ -173,6 +175,12 @@ export function Dashboard() {
               Quick Log
             </Button>
             <Button
+              onClick={() => setShowAccomplishments(true)}
+              style={{ background: '#FFD700', fontWeight: 'bold' }}
+            >
+              Wins
+            </Button>
+            <Button
               size="sm"
               onClick={() => setShowReminders(true)}
             >
@@ -252,6 +260,14 @@ export function Dashboard() {
         <RemindersPanel95
           isOpen={showReminders}
           onClose={() => setShowReminders(false)}
+        />
+      )}
+
+      {/* Accomplishments */}
+      {showAccomplishments && (
+        <AccomplishmentsPanel95
+          isOpen={showAccomplishments}
+          onClose={() => setShowAccomplishments(false)}
         />
       )}
     </Desktop>

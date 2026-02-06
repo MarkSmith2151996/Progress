@@ -6,7 +6,7 @@ electron_1.contextBridge.exposeInMainWorld('electronAPI', {
     getContext: () => electron_1.ipcRenderer.invoke('get-context'),
     updateContext: (updates) => electron_1.ipcRenderer.invoke('update-context', updates),
     // Coach - Claude CLI integration
-    coachChat: (message) => electron_1.ipcRenderer.invoke('coach-chat', message),
+    coachChat: (message, userContext) => electron_1.ipcRenderer.invoke('coach-chat', message, userContext),
     // Natural language parsing
     parseInput: (input) => electron_1.ipcRenderer.invoke('parse-input', input),
     applyParsedItems: (items) => electron_1.ipcRenderer.invoke('apply-parsed-items', items),

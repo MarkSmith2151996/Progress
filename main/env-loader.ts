@@ -83,7 +83,9 @@ export function initializeEnv(): Record<string, string> {
   const criticalVars = [
     'GOOGLE_SHEETS_SPREADSHEET_ID',
     'GOOGLE_SHEETS_CLIENT_EMAIL',
-    'GOOGLE_SHEETS_PRIVATE_KEY'
+    'GOOGLE_SHEETS_PRIVATE_KEY',
+    'NEXT_PUBLIC_SUPABASE_URL',
+    'NEXT_PUBLIC_SUPABASE_ANON_KEY'
   ];
 
   for (const key of criticalVars) {
