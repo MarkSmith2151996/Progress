@@ -1,0 +1,14 @@
+{
+  "name": "progress-coach-server",
+  "version": "1.0.0",
+  "description": "Coach relay server - bridges mobile to Claude CLI via Supabase",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node --watch server.js"
+  },
+  "dependencies": {
+    "@supabase/supabase-js": "^2.39.0",
+    "dotenv": "^16.3.1"
+  }
+}

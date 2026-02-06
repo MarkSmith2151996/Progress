@@ -312,6 +312,30 @@ export interface ChatMessage {
   timestamp: string;
 }
 
+export type CoachMessageStatus = 'pending' | 'processing' | 'completed' | 'error';
+export type CoachPlatform = 'mobile' | 'desktop';
+export type CoachDigestType = 'daily' | 'weekly';
+
+export interface CoachMessage {
+  id: string;
+  session_id: string;
+  role: 'user' | 'assistant';
+  content: string;
+  platform: CoachPlatform;
+  status: CoachMessageStatus;
+  created_at: string;
+  processed_at: string | null;
+}
+
+export interface CoachDigest {
+  id: string;
+  digest_type: CoachDigestType;
+  content: string;
+  metrics: Record<string, unknown> | null;
+  digest_date: string;
+  created_at: string;
+}
+
 export type AccomplishmentCategory = 'study' | 'work' | 'health' | 'personal' | 'project' | 'other';
 
 export interface ParsedAccomplishment {

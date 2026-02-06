@@ -38,7 +38,7 @@ Both apps connect to the same Supabase database for real-time sync.
 - **State**: Zustand (goalStore, logStore, coachStore, settingsStore, analyticsStore)
 - **Database**: Supabase (Postgres + real-time subscriptions)
 - **Desktop**: Electron 40 + electron-builder
-- **AI**: Claude API (@anthropic-ai/sdk) for coach + smart goal matching
+- **AI**: Claude CLI (Max subscription, no API key needed) for coach + smart goal matching
 - **Offline**: localStorage fallback (browserStorage.ts)
 - **Deploy**: Vercel (mobile), Electron .exe (desktop)
 
@@ -71,6 +71,8 @@ When you add a goal like "Take 2 SAT tests":
 - `habits` - Habit definitions with days_active, target_minutes
 - `habit_completions` - Daily habit check-offs (habit_id + date)
 - `tasks` - Day-specific to-do items with planned_date, status, goal_id link
+- `coach_messages` - Coach chat relay (mobile->Supabase->server->CLI->response)
+- `coach_digests` - AI-generated daily/weekly summaries
 - `user_settings` - Coach context, theme preferences
 
 ### Real-time
@@ -123,7 +125,7 @@ src/
 │   ├── mobile/
 │   │   ├── page.tsx                # Mobile main (Wins, To Do, Monthly, Goals tabs)
 │   │   ├── layout.tsx              # Mobile layout (PWA meta, teal bg)
-│   │   ├── coach/page.tsx          # Coach redirect (desktop only)
+│   │   ├── coach/page.tsx          # Coach redirect (now goes to main Coach tab)
 │   │   ├── calendar/page.tsx       # Calendar view with day popups
 │   │   └── settings/page.tsx       # Habits/goals mgmt, export/import, about
 │   └── api/
@@ -155,12 +157,13 @@ src/
 │   ├── debug/DebugPanel95.tsx
 │   ├── mobile/MobileShared.tsx     # All shared mobile styled components
 │   ├── mobile/Win95Icons.tsx       # CSS pixel art icons
+│   ├── mobile/Win95Keyboard.tsx   # Custom Win95 on-screen keyboard for mobile
 │   ├── providers/React95Provider.tsx
 │   └── shared/                     # Alert, Button, LoadingSlider, etc.
 ├── stores/
 │   ├── goalStore.ts                # Goals CRUD + real-time + Supabase sync
 │   ├── logStore.ts                 # Logs, habits, tasks, completions + sync
-│   ├── coachStore.ts               # Coach chat + summary (Electron IPC or API)
+│   ├── coachStore.ts               # Coach chat + summary (Electron IPC or Supabase relay)
 │   ├── settingsStore.ts            # Theme, coach_context, persisted
 │   └── analyticsStore.ts           # Analytics/patterns
 ├── lib/
@@ -191,6 +194,12 @@ main/
 ├── background.ts                   # Electron main process
 ├── env-loader.ts                   # Load .env.local for Electron
 └── preload.ts                      # Electron preload (IPC bridge)
+
+coach-server/
+├── server.js                       # Supabase relay server (Claude CLI)
+├── package.json                    # Server dependencies
+├── .env                            # Supabase credentials (gitignored)
+└── start.bat                       # Windows startup script
 ```
 
 ---
@@ -203,6 +212,11 @@ main/
    - **Tasks**: Day-specific to-do items with date navigation, goal linking
 3. **Monthly** - Monthly goal management with progress bars
 4. **Goals** - All active goals overview with progress
+5. **Coach** - AI coach powered by Claude CLI via Supabase relay. Sub-views:
+   - **Chat**: Real-time conversation (messages relay through coach server)
+   - **Digest**: Daily AI-generated summary of progress + insights
+   - **Stats**: Data dashboard (habits, tasks, goals, streaks — no AI needed)
+   - Custom Win95 on-screen keyboard (suppresses native keyboard)
 
 ### To Do Tab Details
 - Sub-tab toggle (Habits | Tasks) using ToggleGroup
@@ -210,6 +224,39 @@ main/
 - "+" button opens popup with Habit/Task type selector
 - Tasks can be linked to goals, have time estimates
 - Task statuses: planned, completed, skipped, rolled
+
+---
+
+## Coach Server (Claude CLI Relay)
+
+The coach uses Claude CLI (Max subscription) — no API key needed.
+
+**Architecture**: `Mobile → Supabase → Coach Server (your PC) → Claude CLI → Supabase → Mobile`
+
+### Setup
+```bash
+cd coach-server
+npm install
+# Start the server (auto-starts digest generation + message listener)
+node server.js
+# Or double-click start.bat
+```
+
+### How it works
+1. Mobile sends chat message → inserted into `coach_messages` table (status: 'pending')
+2. Coach server detects new pending message via Supabase real-time subscription
+3. Server builds context from Supabase data (goals, tasks, habits, logs)
+4. Server calls `claude -p "SYSTEM: ... USER: ..."` via CLI
+5. Response inserted into `coach_messages` (status: 'completed')
+6. Mobile receives response via Supabase real-time subscription
+
+### Auto-start
+Add a shortcut to `coach-server\start.bat` in `shell:startup` to auto-launch with Windows.
+
+### Daily Digest
+- Generated automatically on server startup, then every 24 hours
+- Stored in `coach_digests` table
+- Mobile Coach tab → Digest sub-view shows latest
 
 ---
 

@@ -1,8 +1,23 @@
 import { create } from 'zustand';
-import { ChatMessage, Alert } from '@/types';
+import { ChatMessage, Alert, CoachMessage, CoachDigest } from '@/types';
+import {
+  sendCoachMessage,
+  getCoachMessages,
+  subscribeToCoachMessages,
+  getLatestDigest,
+  getDigestHistory,
+  unsubscribe,
+  isSupabaseConfigured,
+} from '@/lib/supabase';
+import { RealtimeChannel } from '@supabase/supabase-js';
 
 // Check if running in Electron
 const isElectron = typeof window !== 'undefined' && window.electronAPI !== undefined;
+
+// Generate a session ID for this chat session
+function generateSessionId(): string {
+  return `session_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+}
 
 interface CoachState {
   summary: string | null;
@@ -11,6 +26,11 @@ interface CoachState {
   isLoadingSummary: boolean;
   isLoadingChat: boolean;
   error: string | null;
+  sessionId: string;
+  coachOnline: boolean;
+  latestDigest: CoachDigest | null;
+  digestHistory: CoachDigest[];
+  subscription: RealtimeChannel | null;
 
   // Actions
   setSummary: (summary: string) => void;
@@ -21,6 +41,11 @@ interface CoachState {
 
   fetchSummary: (userContext?: string) => Promise<void>;
   sendMessage: (content: string, userContext?: string) => Promise<void>;
+  initSession: () => void;
+  loadChatHistory: () => Promise<void>;
+  fetchDigest: () => Promise<void>;
+  fetchDigestHistory: () => Promise<void>;
+  cleanup: () => void;
 }
 
 export const useCoachStore = create<CoachState>((set, get) => ({
@@ -30,6 +55,11 @@ export const useCoachStore = create<CoachState>((set, get) => ({
   isLoadingSummary: false,
   isLoadingChat: false,
   error: null,
+  sessionId: generateSessionId(),
+  coachOnline: false,
+  latestDigest: null,
+  digestHistory: [],
+  subscription: null,
 
   setSummary: (summary) => set({ summary }),
 
@@ -38,7 +68,18 @@ export const useCoachStore = create<CoachState>((set, get) => ({
       chatHistory: [...state.chatHistory, message],
     })),
 
-  clearChat: () => set({ chatHistory: [] }),
+  clearChat: () => {
+    const { subscription } = get();
+    if (subscription) unsubscribe(subscription);
+    const newSessionId = generateSessionId();
+    set({
+      chatHistory: [],
+      sessionId: newSessionId,
+      subscription: null,
+    });
+    // Re-subscribe with new session
+    get().initSession();
+  },
 
   setAlerts: (alerts) => set({ alerts }),
 
@@ -48,6 +89,49 @@ export const useCoachStore = create<CoachState>((set, get) => ({
         a.id === alertId ? { ...a, dismissed: true } : a
       ),
     })),
+
+  // Initialize Supabase subscription for this session
+  initSession: () => {
+    if (isElectron) return; // Desktop uses IPC directly
+
+    const { sessionId, subscription: existingSub } = get();
+    if (existingSub) unsubscribe(existingSub);
+
+    if (!isSupabaseConfigured()) return;
+
+    const sub = subscribeToCoachMessages(sessionId, (msg: CoachMessage) => {
+      // Only process assistant responses (completed or error)
+      if (msg.role === 'assistant' && (msg.status === 'completed' || msg.status === 'error')) {
+        const assistantMessage: ChatMessage = {
+          id: msg.id,
+          role: 'assistant',
+          content: msg.content,
+          timestamp: msg.created_at,
+        };
+        get().addMessage(assistantMessage);
+        set({ isLoadingChat: false, coachOnline: true });
+      }
+    });
+
+    set({ subscription: sub });
+  },
+
+  // Load existing chat history from Supabase
+  loadChatHistory: async () => {
+    if (isElectron) return;
+
+    const { sessionId } = get();
+    const messages = await getCoachMessages(sessionId);
+    const chatHistory: ChatMessage[] = messages
+      .filter((m) => m.status === 'completed' || m.role === 'user')
+      .map((m) => ({
+        id: m.id,
+        role: m.role,
+        content: m.content,
+        timestamp: m.created_at,
+      }));
+    set({ chatHistory });
+  },
 
   fetchSummary: async (userContext?: string) => {
     set({ isLoadingSummary: true, error: null });
@@ -76,22 +160,26 @@ export const useCoachStore = create<CoachState>((set, get) => ({
         });
       }
     } else {
-      // Fallback to API route
+      // Use latest digest as summary
       try {
-        const response = await fetch('/api/coach/summary');
-        if (!response.ok) throw new Error('Failed to fetch summary');
-
-        const data = await response.json();
-        set({
-          summary: data.summary,
-          alerts: data.alerts || [],
-          isLoadingSummary: false,
-        });
+        const digest = await getLatestDigest('daily');
+        if (digest) {
+          set({
+            summary: digest.content,
+            isLoadingSummary: false,
+            coachOnline: true,
+          });
+        } else {
+          set({
+            isLoadingSummary: false,
+            summary: 'No daily digest yet. Send a message to check if the coach server is running.',
+          });
+        }
       } catch (error) {
         set({
           error: (error as Error).message,
           isLoadingSummary: false,
-          summary: 'Unable to load coach summary. Try the desktop app.',
+          summary: 'Unable to load summary.',
         });
       }
     }
@@ -109,7 +197,7 @@ export const useCoachStore = create<CoachState>((set, get) => ({
     set({ isLoadingChat: true, error: null });
 
     if (isElectron) {
-      // Use Electron IPC
+      // Use Electron IPC directly
       try {
         const result = await window.electronAPI.coachChat(content, userContext);
 
@@ -135,42 +223,53 @@ export const useCoachStore = create<CoachState>((set, get) => ({
         get().addMessage(errorMessage);
       }
     } else {
-      // Fallback to API route
+      // Send via Supabase relay — coach server will pick it up
       try {
-        const response = await fetch('/api/coach/chat', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            message: content,
-            history: get().chatHistory,
-          }),
-        });
-
-        if (!response.ok) throw new Error('Failed to get response');
-
-        const data = await response.json();
-
-        const assistantMessage: ChatMessage = {
-          id: `msg_${Date.now() + 1}`,
-          role: 'assistant',
-          content: data.response,
-          timestamp: new Date().toISOString(),
-        };
-
-        get().addMessage(assistantMessage);
-        set({ isLoadingChat: false });
+        const { sessionId } = get();
+        await sendCoachMessage(sessionId, content, 'mobile');
+        // Response will arrive via the subscription (initSession)
+        // Set a timeout in case server is offline
+        setTimeout(() => {
+          const { isLoadingChat } = get();
+          if (isLoadingChat) {
+            set({ isLoadingChat: false, coachOnline: false });
+            const offlineMsg: ChatMessage = {
+              id: `msg_${Date.now() + 1}`,
+              role: 'assistant',
+              content: 'Coach server appears offline. Your message has been queued and will be processed when the server comes back online.',
+              timestamp: new Date().toISOString(),
+            };
+            get().addMessage(offlineMsg);
+          }
+        }, 90000); // 90s timeout (CLI can take up to 60s + network)
       } catch (error) {
         set({ error: (error as Error).message, isLoadingChat: false });
 
         const errorMessage: ChatMessage = {
           id: `msg_${Date.now() + 1}`,
           role: 'assistant',
-          content: 'Sorry, I had trouble responding. Please try again.',
+          content: 'Unable to send message. Check your internet connection.',
           timestamp: new Date().toISOString(),
         };
 
         get().addMessage(errorMessage);
       }
     }
+  },
+
+  fetchDigest: async () => {
+    const digest = await getLatestDigest('daily');
+    set({ latestDigest: digest });
+  },
+
+  fetchDigestHistory: async () => {
+    const history = await getDigestHistory('daily', 7);
+    set({ digestHistory: history });
+  },
+
+  cleanup: () => {
+    const { subscription } = get();
+    if (subscription) unsubscribe(subscription);
+    set({ subscription: null });
   },
 }));

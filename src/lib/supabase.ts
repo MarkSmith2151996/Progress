@@ -10,6 +10,8 @@ import {
   DailyLog,
   Habit,
   HabitCompletion,
+  CoachMessage,
+  CoachDigest,
 } from '@/types';
 
 // ============================================
@@ -641,4 +643,139 @@ export async function upsertUserSettings(settings: Partial<UserSettingsDb>): Pro
 
 export async function updateCoachContext(context: string): Promise<void> {
   await upsertUserSettings({ coach_context: context });
+}
+
+// ============================================
+// COACH MESSAGES (relay for Claude CLI)
+// ============================================
+
+export async function getCoachMessages(sessionId: string): Promise<CoachMessage[]> {
+  const client = getSupabaseClient();
+  if (!client) return [];
+
+  const { data, error } = await client
+    .from('coach_messages')
+    .select('*')
+    .eq('session_id', sessionId)
+    .order('created_at', { ascending: true });
+
+  if (error) {
+    console.error('Error fetching coach messages:', error);
+    return [];
+  }
+
+  return (data || []) as CoachMessage[];
+}
+
+export async function sendCoachMessage(
+  sessionId: string,
+  content: string,
+  platform: 'mobile' | 'desktop' = 'mobile'
+): Promise<CoachMessage | null> {
+  const client = getSupabaseClient();
+  if (!client) return null;
+
+  const message = {
+    session_id: sessionId,
+    role: 'user',
+    content,
+    platform,
+    status: 'pending',
+  };
+
+  const { data, error } = await client
+    .from('coach_messages')
+    .insert(message)
+    .select()
+    .single();
+
+  if (error) {
+    console.error('Error sending coach message:', error);
+    throw error;
+  }
+
+  return data as CoachMessage;
+}
+
+export function subscribeToCoachMessages(
+  sessionId: string,
+  callback: (message: CoachMessage) => void
+): RealtimeChannel | null {
+  const client = getSupabaseClient();
+  if (!client) return null;
+
+  return client
+    .channel(`coach-${sessionId}`)
+    .on(
+      'postgres_changes',
+      {
+        event: 'INSERT',
+        schema: 'public',
+        table: 'coach_messages',
+        filter: `session_id=eq.${sessionId}`,
+      },
+      (payload) => {
+        callback(payload.new as CoachMessage);
+      }
+    )
+    .on(
+      'postgres_changes',
+      {
+        event: 'UPDATE',
+        schema: 'public',
+        table: 'coach_messages',
+        filter: `session_id=eq.${sessionId}`,
+      },
+      (payload) => {
+        callback(payload.new as CoachMessage);
+      }
+    )
+    .subscribe();
+}
+
+// ============================================
+// COACH DIGESTS
+// ============================================
+
+export async function getLatestDigest(digestType: 'daily' | 'weekly' = 'daily'): Promise<CoachDigest | null> {
+  const client = getSupabaseClient();
+  if (!client) return null;
+
+  const { data, error } = await client
+    .from('coach_digests')
+    .select('*')
+    .eq('digest_type', digestType)
+    .order('digest_date', { ascending: false })
+    .limit(1)
+    .single();
+
+  if (error) {
+    if (error.code === 'PGRST116') return null;
+    console.error('Error fetching digest:', error);
+    return null;
+  }
+
+  return data as CoachDigest;
+}
+
+export async function getDigestHistory(
+  digestType: 'daily' | 'weekly' = 'daily',
+  limit: number = 7
+): Promise<CoachDigest[]> {
+  const client = getSupabaseClient();
+  if (!client) return [];
+
+  const { data, error } = await client
+    .from('coach_digests')
+    .select('*')
+    .eq('digest_type', digestType)
+    .order('digest_date', { ascending: false })
+    .limit(limit);
+
+  if (error) {
+    console.error('Error fetching digest history:', error);
+    return [];
+  }
+
+  return (data || []) as CoachDigest[];
 }

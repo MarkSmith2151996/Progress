@@ -82,6 +82,28 @@ CREATE TABLE IF NOT EXISTS user_settings (
   updated_at TIMESTAMPTZ DEFAULT NOW()
 );
 
+-- Coach Messages (relay between mobile and desktop via Claude CLI)
+CREATE TABLE IF NOT EXISTS coach_messages (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  session_id TEXT NOT NULL,
+  role TEXT NOT NULL,  -- 'user' | 'assistant'
+  content TEXT NOT NULL,
+  platform TEXT DEFAULT 'mobile',  -- 'mobile' | 'desktop'
+  status TEXT DEFAULT 'pending',  -- 'pending' | 'processing' | 'completed' | 'error'
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  processed_at TIMESTAMPTZ
+);
+
+-- Coach Digests (daily/weekly AI-generated summaries)
+CREATE TABLE IF NOT EXISTS coach_digests (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  digest_type TEXT NOT NULL,  -- 'daily' | 'weekly'
+  content TEXT NOT NULL,
+  metrics JSONB,
+  digest_date DATE NOT NULL,
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
 -- Enable real-time for all tables
 ALTER PUBLICATION supabase_realtime ADD TABLE goals;
 ALTER PUBLICATION supabase_realtime ADD TABLE daily_logs;
@@ -89,6 +111,8 @@ ALTER PUBLICATION supabase_realtime ADD TABLE habits;
 ALTER PUBLICATION supabase_realtime ADD TABLE habit_completions;
 ALTER PUBLICATION supabase_realtime ADD TABLE tasks;
 ALTER PUBLICATION supabase_realtime ADD TABLE user_settings;
+ALTER PUBLICATION supabase_realtime ADD TABLE coach_messages;
+ALTER PUBLICATION supabase_realtime ADD TABLE coach_digests;
 
 -- Enable Row Level Security (optional - enable when you add auth)
 -- ALTER TABLE goals ENABLE ROW LEVEL SECURITY;
@@ -103,3 +127,6 @@ CREATE INDEX IF NOT EXISTS idx_daily_logs_date ON daily_logs(date);
 CREATE INDEX IF NOT EXISTS idx_habits_active ON habits(active);
 CREATE INDEX IF NOT EXISTS idx_habit_completions_date ON habit_completions(date);
 CREATE INDEX IF NOT EXISTS idx_tasks_planned_date ON tasks(planned_date);
+CREATE INDEX IF NOT EXISTS idx_coach_messages_session ON coach_messages(session_id);
+CREATE INDEX IF NOT EXISTS idx_coach_messages_status ON coach_messages(status);
+CREATE INDEX IF NOT EXISTS idx_coach_digests_date ON coach_digests(digest_date);

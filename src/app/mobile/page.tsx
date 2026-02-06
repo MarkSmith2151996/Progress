@@ -7,7 +7,9 @@ import { format } from 'date-fns';
 import { useRouter } from 'next/navigation';
 import { useLogStore } from '@/stores/logStore';
 import { useGoalStore } from '@/stores/goalStore';
-import { Goal, Habit, HabitWithStatus, GoalType, GoalStatus, Task, TaskStatus } from '@/types';
+import { Goal, Habit, HabitWithStatus, GoalType, GoalStatus, Task, TaskStatus, CoachDigest } from '@/types';
+import { useCoachStore } from '@/stores/coachStore';
+import Win95Keyboard from '@/components/mobile/Win95Keyboard';
 import {
   MobileContainer,
   MainWindow,
@@ -208,7 +210,161 @@ const TABS = {
   TODO: 1,
   MONTHLY: 2,
   SUMMARY: 3,
+  COACH: 4,
 };
+
+// ============================================
+// COACH STYLED COMPONENTS
+// ============================================
+
+const CoachContainer = styled.div`
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+`;
+
+const CoachMessages = styled.div`
+  flex: 1;
+  overflow-y: auto;
+  padding: 8px;
+  background: #fff;
+  border: 2px solid;
+  border-color: #808080 #dfdfdf #dfdfdf #808080;
+  box-shadow: inset 1px 1px 0 #0a0a0a;
+  margin: 4px 0;
+`;
+
+const CoachBubble = styled.div<{ $role: 'user' | 'assistant' }>`
+  max-width: 85%;
+  padding: 8px 10px;
+  margin-bottom: 8px;
+  font-size: 12px;
+  line-height: 1.4;
+  background: ${props => props.$role === 'user' ? '#000080' : '#c0c0c0'};
+  color: ${props => props.$role === 'user' ? '#fff' : '#000'};
+  border: 2px solid;
+  border-color: ${props => props.$role === 'user'
+    ? '#4040c0 #000040 #000040 #4040c0'
+    : '#dfdfdf #808080 #808080 #dfdfdf'};
+  margin-left: ${props => props.$role === 'user' ? 'auto' : '0'};
+  margin-right: ${props => props.$role === 'user' ? '0' : 'auto'};
+  word-wrap: break-word;
+`;
+
+const CoachTimestamp = styled.div`
+  font-size: 9px;
+  color: #808080;
+  margin-top: 2px;
+`;
+
+const CoachStatus = styled.div<{ $online: boolean }>`
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 10px;
+  padding: 4px 8px;
+  background: ${props => props.$online ? '#90EE90' : '#FFD700'};
+  border-bottom: 1px solid #808080;
+  font-weight: bold;
+`;
+
+const StatusDot = styled.span<{ $online: boolean }>`
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: ${props => props.$online ? '#008000' : '#808080'};
+`;
+
+const TypingIndicator = styled.div`
+  padding: 8px 10px;
+  font-size: 12px;
+  color: #808080;
+  font-style: italic;
+  background: #c0c0c0;
+  border: 2px solid;
+  border-color: #dfdfdf #808080 #808080 #dfdfdf;
+  max-width: 120px;
+  margin-bottom: 8px;
+  animation: pulse 1.5s ease-in-out infinite;
+
+  @keyframes pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.5; }
+  }
+`;
+
+const CoachInputRow = styled.div`
+  display: flex;
+  gap: 4px;
+  padding: 4px 0;
+`;
+
+const CoachInput = styled.input`
+  flex: 1;
+  padding: 6px 8px;
+  font-size: 13px;
+  border: 2px solid;
+  border-color: #808080 #dfdfdf #dfdfdf #808080;
+  box-shadow: inset 1px 1px 0 #0a0a0a;
+  background: #fff;
+  font-family: inherit;
+
+  &:focus {
+    outline: none;
+  }
+
+  &::placeholder {
+    color: #808080;
+  }
+`;
+
+const DigestCard = styled.div`
+  padding: 12px;
+  background: #fff;
+  border: 2px solid;
+  border-color: #808080 #dfdfdf #dfdfdf #808080;
+  box-shadow: inset 1px 1px 0 #0a0a0a;
+  margin: 4px 0;
+`;
+
+const DigestDate = styled.div`
+  font-size: 11px;
+  color: #808080;
+  margin-bottom: 8px;
+  font-weight: bold;
+`;
+
+const DigestContent = styled.div`
+  font-size: 12px;
+  line-height: 1.5;
+  color: #000;
+  white-space: pre-wrap;
+`;
+
+const DashboardStat = styled.div`
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 10px 8px;
+  border-bottom: 1px solid #c0c0c0;
+  background: #fff;
+
+  &:last-child {
+    border-bottom: none;
+  }
+`;
+
+const StatLabel = styled.span`
+  font-size: 12px;
+  color: #000;
+`;
+
+const StatValue = styled.span<{ $color?: string }>`
+  font-size: 14px;
+  font-weight: bold;
+  color: ${props => props.$color || '#000080'};
+`;
 
 export default function MobilePage() {
   const router = useRouter();
@@ -239,6 +395,24 @@ export default function MobilePage() {
   const [newHabitTarget, setNewHabitTarget] = useState('');
   const [newHabitActive, setNewHabitActive] = useState(true);
   const [saving, setSaving] = useState(false);
+
+  // Coach state
+  const [coachSubTab, setCoachSubTab] = useState<'chat' | 'digest' | 'dashboard'>('chat');
+  const [coachInput, setCoachInput] = useState('');
+  const [showKeyboard, setShowKeyboard] = useState(false);
+
+  const {
+    chatHistory,
+    isLoadingChat,
+    coachOnline,
+    latestDigest,
+    digestHistory,
+    sendMessage: sendCoachMsg,
+    initSession,
+    fetchDigest,
+    fetchDigestHistory,
+    cleanup: cleanupCoach,
+  } = useCoachStore();
 
   // To Do sub-tab state
   const [todoSubTab, setTodoSubTab] = useState<'habits' | 'tasks'>('habits');
@@ -307,9 +481,13 @@ export default function MobilePage() {
     fetchData();
     fetchGoals();
     subscribeToRealtime();
+    initSession();
+    fetchDigest();
+    fetchDigestHistory();
 
     return () => {
       unsubscribeFromRealtime();
+      cleanupCoach();
     };
   }, []);
 
@@ -808,11 +986,204 @@ export default function MobilePage() {
         return 'To Do';
       case TABS.MONTHLY:
         return 'Monthly Goals';
+      case TABS.COACH:
+        return 'Coach';
       case TABS.SUMMARY:
       default:
         return 'Goal Summary';
     }
   };
+
+  // ============================================
+  // COACH TAB RENDERING
+  // ============================================
+
+  const handleSendCoachMessage = () => {
+    const msg = coachInput.trim();
+    if (!msg) return;
+    sendCoachMsg(msg);
+    setCoachInput('');
+  };
+
+  const renderCoachChat = () => (
+    <CoachContainer>
+      <CoachStatus $online={coachOnline}>
+        <StatusDot $online={coachOnline} />
+        Coach: {coachOnline ? 'Online' : 'Offline'}
+      </CoachStatus>
+      <CoachMessages>
+        {chatHistory.length === 0 && (
+          <EmptyState style={{ minHeight: 120, padding: '20px 16px' }}>
+            <EmptyStateTitle>Chat with your Coach</EmptyStateTitle>
+            <EmptyStateText>
+              Send a message to get personalized insights about your progress.
+            </EmptyStateText>
+          </EmptyState>
+        )}
+        {chatHistory.map((msg) => (
+          <CoachBubble key={msg.id} $role={msg.role}>
+            {msg.content}
+            <CoachTimestamp>
+              {format(new Date(msg.timestamp), 'h:mm a')}
+            </CoachTimestamp>
+          </CoachBubble>
+        ))}
+        {isLoadingChat && (
+          <TypingIndicator>Thinking...</TypingIndicator>
+        )}
+      </CoachMessages>
+      <CoachInputRow>
+        <CoachInput
+          value={coachInput}
+          onChange={(e) => setCoachInput(e.target.value)}
+          onFocus={() => setShowKeyboard(true)}
+          inputMode="none"
+          placeholder="Ask your coach..."
+          onKeyDown={(e) => {
+            if (e.key === 'Enter') handleSendCoachMessage();
+          }}
+        />
+        <Button onClick={handleSendCoachMessage} disabled={isLoadingChat || !coachInput.trim()}>
+          Send
+        </Button>
+      </CoachInputRow>
+      <Win95Keyboard
+        visible={showKeyboard}
+        onInput={(char) => setCoachInput((prev) => prev + char)}
+        onBackspace={() => setCoachInput((prev) => prev.slice(0, -1))}
+        onEnter={handleSendCoachMessage}
+      />
+      {showKeyboard && (
+        <Button
+          onClick={() => setShowKeyboard(false)}
+          style={{ width: '100%', fontSize: 10, padding: '2px 0' }}
+        >
+          Hide Keyboard
+        </Button>
+      )}
+    </CoachContainer>
+  );
+
+  const renderCoachDigest = () => (
+    <>
+      {latestDigest ? (
+        <DigestCard>
+          <DigestDate>
+            {format(new Date(latestDigest.digest_date), 'EEEE, MMM d')} - Daily Digest
+          </DigestDate>
+          <DigestContent>{latestDigest.content}</DigestContent>
+        </DigestCard>
+      ) : (
+        <EmptyState>
+          <EmptyStateTitle>No Digest Yet</EmptyStateTitle>
+          <EmptyStateText>
+            The coach server generates a daily digest each morning. Make sure the server is running on your PC.
+          </EmptyStateText>
+        </EmptyState>
+      )}
+      {digestHistory.length > 1 && (
+        <>
+          <SectionHeader>Previous Digests</SectionHeader>
+          {digestHistory.slice(1).map((d) => (
+            <DigestCard key={d.id}>
+              <DigestDate>{format(new Date(d.digest_date), 'EEE, MMM d')}</DigestDate>
+              <DigestContent>{d.content}</DigestContent>
+            </DigestCard>
+          ))}
+        </>
+      )}
+    </>
+  );
+
+  const renderCoachDashboard = () => {
+    const completedHabitsToday = todayCompletions.filter((c) => c.completed).length;
+    const totalHabitsToday = activeHabits.length;
+    const habitRate = totalHabitsToday > 0 ? Math.round((completedHabitsToday / totalHabitsToday) * 100) : 0;
+    const weekTasks = tasks.filter((t) => {
+      const d = new Date(t.planned_date);
+      const now = new Date();
+      const weekAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+      return d >= weekAgo && d <= now;
+    });
+    const weekCompleted = weekTasks.filter((t) => t.status === 'completed').length;
+    const logDays = dailyLogs.length;
+
+    return (
+      <>
+        <SectionHeader>Today</SectionHeader>
+        <ListContainer>
+          <DashboardStat>
+            <StatLabel>Habits Completed</StatLabel>
+            <StatValue $color={habitRate >= 80 ? '#008000' : habitRate >= 50 ? '#808000' : '#ff0000'}>
+              {completedHabitsToday}/{totalHabitsToday} ({habitRate}%)
+            </StatValue>
+          </DashboardStat>
+        </ListContainer>
+
+        <SectionHeader>This Week</SectionHeader>
+        <ListContainer>
+          <DashboardStat>
+            <StatLabel>Tasks Completed</StatLabel>
+            <StatValue>{weekCompleted}/{weekTasks.length}</StatValue>
+          </DashboardStat>
+        </ListContainer>
+
+        <SectionHeader>Active Goals</SectionHeader>
+        <ListContainer>
+          {activeGoals.map((goal) => {
+            const range = goal.target_value - goal.starting_value;
+            const progress = range > 0 ? Math.round(((goal.current_value - goal.starting_value) / range) * 100) : 0;
+            const daysLeft = Math.max(0, Math.ceil((new Date(goal.deadline).getTime() - Date.now()) / (1000 * 60 * 60 * 24)));
+            return (
+              <DashboardStat key={goal.goal_id}>
+                <StatLabel>{goal.title}</StatLabel>
+                <StatValue $color={progress >= 70 ? '#008000' : progress >= 40 ? '#808000' : '#ff0000'}>
+                  {progress}% ({daysLeft}d left)
+                </StatValue>
+              </DashboardStat>
+            );
+          })}
+          {activeGoals.length === 0 && (
+            <DashboardStat>
+              <StatLabel>No active goals</StatLabel>
+              <StatValue>-</StatValue>
+            </DashboardStat>
+          )}
+        </ListContainer>
+
+        <SectionHeader>Stats</SectionHeader>
+        <ListContainer>
+          <DashboardStat>
+            <StatLabel>Total Log Days</StatLabel>
+            <StatValue>{logDays}</StatValue>
+          </DashboardStat>
+          <DashboardStat>
+            <StatLabel>Total Wins Logged</StatLabel>
+            <StatValue>{allAccomplishments.length}</StatValue>
+          </DashboardStat>
+        </ListContainer>
+      </>
+    );
+  };
+
+  const renderCoach = () => (
+    <>
+      <ToggleGroup style={{ margin: '0 0 8px 0' }}>
+        <ToggleButton $active={coachSubTab === 'chat'} onClick={() => setCoachSubTab('chat')}>
+          Chat
+        </ToggleButton>
+        <ToggleButton $active={coachSubTab === 'digest'} onClick={() => setCoachSubTab('digest')}>
+          Digest
+        </ToggleButton>
+        <ToggleButton $active={coachSubTab === 'dashboard'} onClick={() => setCoachSubTab('dashboard')}>
+          Stats
+        </ToggleButton>
+      </ToggleGroup>
+      {coachSubTab === 'chat' && renderCoachChat()}
+      {coachSubTab === 'digest' && renderCoachDigest()}
+      {coachSubTab === 'dashboard' && renderCoachDashboard()}
+    </>
+  );
 
   // Render Goal Summary (default tab)
   const renderGoalSummary = () => {
@@ -1173,6 +1544,7 @@ export default function MobilePage() {
               {activeTab === TABS.TODO && renderTodo()}
               {activeTab === TABS.MONTHLY && renderMonthlyGoals()}
               {activeTab === TABS.ACCOMPLISHMENTS && renderAccomplishments()}
+              {activeTab === TABS.COACH && renderCoach()}
             </ScrollArea>
           </ContentArea>
         </MainWindow>
@@ -1214,6 +1586,15 @@ export default function MobilePage() {
               <Win95Icon $bg="#fff" $color="#008000" style={{ width: 18, height: 18, fontSize: 10 }}>▊</Win95Icon>
             </TabIcon>
             <TabLabel>Goals</TabLabel>
+          </BottomTab>
+          <BottomTab
+            $active={activeTab === TABS.COACH}
+            onClick={() => setActiveTab(TABS.COACH)}
+          >
+            <TabIcon>
+              <Win95Icon $bg="#DDA0DD" $color="#800080" style={{ width: 18, height: 18, fontSize: 10 }}>♦</Win95Icon>
+            </TabIcon>
+            <TabLabel>Coach</TabLabel>
           </BottomTab>
         </BottomTabs>
       </MobileContainer>
