@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import { DailyLog, Task, Habit, HabitCompletion, HabitWithStatus, Goal } from '@/types';
+import { DailyLog, DifficultyTier, Task, Habit, HabitCompletion, HabitWithStatus, Goal } from '@/types';
 import { enrichHabitWithStatus, isHabitActiveToday, getToday } from '@/lib/metrics';
 import * as browserStorage from '@/lib/browserStorage';
 import * as supabase from '@/lib/supabase';
@@ -46,6 +46,8 @@ interface LogState {
   getTasksByDate: (date: string) => Task[];
   getTodayHabits: () => HabitWithStatus[];
   getHabitsByDate: (date: string) => HabitWithStatus[];
+  getDifficultyTier: (date: string) => DifficultyTier;
+  setDifficultyTier: (date: string, tier: DifficultyTier) => Promise<void>;
 
   // Real-time subscriptions
   subscribeToRealtime: () => void;
@@ -407,6 +409,37 @@ export const useLogStore = create<LogState>((set, get) => ({
     return habits
       .filter((h) => h.active)
       .map((h) => enrichHabitWithStatus(h, habitCompletions, date));
+  },
+
+  getDifficultyTier: (date) => {
+    const { dailyLogs } = get();
+    const log = dailyLogs.find((l) => l.date === date);
+    return log?.difficulty_tier || 'med';
+  },
+
+  setDifficultyTier: async (date, tier) => {
+    const { dailyLogs, saveDailyLog } = get();
+    const existing = dailyLogs.find((l) => l.date === date);
+
+    const log: DailyLog = existing
+      ? { ...existing, difficulty_tier: tier }
+      : {
+          date,
+          day_type: null,
+          difficulty_tier: tier,
+          energy_level: null,
+          hours_slept: null,
+          work_hours: null,
+          school_hours: null,
+          free_hours: null,
+          overall_rating: null,
+          notes: null,
+          sick: false,
+          accomplishments: [],
+          created_at: new Date().toISOString(),
+        };
+
+    await saveDailyLog(log);
   },
 
   subscribeToRealtime: () => {

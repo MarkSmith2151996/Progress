@@ -7,7 +7,7 @@ import { format } from 'date-fns';
 import { useRouter } from 'next/navigation';
 import { useLogStore } from '@/stores/logStore';
 import { useGoalStore } from '@/stores/goalStore';
-import { Goal, Habit, HabitWithStatus, GoalType, GoalStatus, Task, TaskStatus } from '@/types';
+import { Goal, Habit, HabitWithStatus, GoalType, GoalStatus, Task, TaskStatus, DifficultyTier } from '@/types';
 import { useCoachStore } from '@/stores/coachStore';
 import { useSettingsStore } from '@/stores/settingsStore';
 import {
@@ -366,6 +366,116 @@ const StatValue = styled.span<{ $color?: string }>`
   color: ${props => props.$color || '#000080'};
 `;
 
+// ============================================
+// DIFFICULTY TIER COMPONENTS
+// ============================================
+
+const TIER_COLORS: Record<DifficultyTier, string> = {
+  low: '#90EE90',
+  med: '#FFD700',
+  high: '#FF6B6B',
+};
+
+const TIER_LABELS: Record<DifficultyTier, string> = {
+  low: 'Low',
+  med: 'Med',
+  high: 'High',
+};
+
+const TierDayButton = styled.button<{ $tier: DifficultyTier }>`
+  width: 38px;
+  height: 38px;
+  background: ${props => TIER_COLORS[props.$tier]};
+  border: 2px solid;
+  border-color: #dfdfdf #808080 #808080 #dfdfdf;
+  cursor: pointer;
+  font-size: 11px;
+  font-weight: bold;
+  font-family: 'MS Sans Serif', sans-serif;
+  color: #000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+
+  &:active {
+    border-color: #808080 #dfdfdf #dfdfdf #808080;
+  }
+`;
+
+const TierDayColumn = styled.div`
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+`;
+
+const TierDayLabel = styled.span<{ $isToday?: boolean }>`
+  font-size: 10px;
+  color: ${props => props.$isToday ? '#000080' : '#808080'};
+  font-weight: ${props => props.$isToday ? 'bold' : 'normal'};
+`;
+
+const TierBadge = styled.span<{ $tier: DifficultyTier }>`
+  display: inline-block;
+  padding: 1px 6px;
+  background: ${props => TIER_COLORS[props.$tier]};
+  border: 1px solid #808080;
+  font-size: 10px;
+  font-weight: bold;
+  color: #000;
+  margin-left: 6px;
+`;
+
+const TierLegend = styled.div`
+  display: flex;
+  gap: 12px;
+  justify-content: center;
+  margin-top: 8px;
+`;
+
+const TierLegendItem = styled.div`
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 10px;
+  color: #808080;
+`;
+
+const TierLegendDot = styled.div<{ $color: string }>`
+  width: 10px;
+  height: 10px;
+  background: ${props => props.$color};
+  border: 1px solid #808080;
+`;
+
+// Helpers
+function getWeekStart(dateStr: string): string {
+  const d = new Date(dateStr + 'T00:00:00');
+  const day = d.getDay();
+  const diff = day === 0 ? -6 : 1 - day; // Monday start
+  d.setDate(d.getDate() + diff);
+  return format(d, 'yyyy-MM-dd');
+}
+
+function getWeekDates(mondayStr: string): string[] {
+  const dates: string[] = [];
+  const d = new Date(mondayStr + 'T00:00:00');
+  for (let i = 0; i < 7; i++) {
+    dates.push(format(d, 'yyyy-MM-dd'));
+    d.setDate(d.getDate() + 1);
+  }
+  return dates;
+}
+
+function cycleTier(current: DifficultyTier): DifficultyTier {
+  if (current === 'low') return 'med';
+  if (current === 'med') return 'high';
+  return 'low';
+}
+
+const DAY_NAMES = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+
 export default function MobilePage() {
   const router = useRouter();
   const [today] = useState(format(new Date(), 'yyyy-MM-dd'));
@@ -414,6 +524,10 @@ export default function MobilePage() {
     cleanup: cleanupCoach,
   } = useCoachStore();
 
+  // Difficulty tier state
+  const [showDifficultyPopup, setShowDifficultyPopup] = useState(false);
+  const [difficultyWeekStart, setDifficultyWeekStart] = useState(() => getWeekStart(today));
+
   // To Do sub-tab state
   const [todoSubTab, setTodoSubTab] = useState<'habits' | 'tasks'>('habits');
   const [taskViewDate, setTaskViewDate] = useState(today);
@@ -442,6 +556,8 @@ export default function MobilePage() {
     toggleTask,
     addHabit,
     getTodayHabits,
+    getDifficultyTier,
+    setDifficultyTier,
     syncStatus: logSyncStatus,
     goalUpdateMessage,
     clearGoalUpdateMessage,
@@ -1324,7 +1440,9 @@ export default function MobilePage() {
         ) : (
           <>
             <SectionHeader>
-              {isToday ? 'Today' : format(new Date(taskViewDate + 'T00:00:00'), 'MMM d')} &mdash; {completed}/{dateTasks.length} done
+              {isToday ? 'Today' : format(new Date(taskViewDate + 'T00:00:00'), 'MMM d')}
+              <TierBadge $tier={getDifficultyTier(taskViewDate)}>{TIER_LABELS[getDifficultyTier(taskViewDate)]}</TierBadge>
+              {' '}&mdash; {completed}/{dateTasks.length} done
             </SectionHeader>
             <ListContainer>
               {dateTasks.map((task) => {
@@ -1367,9 +1485,96 @@ export default function MobilePage() {
   };
 
   // Render To Do tab wrapper with sub-tabs
+  const handleCycleTier = async (date: string) => {
+    const current = getDifficultyTier(date);
+    const next = cycleTier(current);
+    await setDifficultyTier(date, next);
+  };
+
+  const handleDifficultyWeekPrev = () => {
+    const d = new Date(difficultyWeekStart + 'T00:00:00');
+    d.setDate(d.getDate() - 7);
+    setDifficultyWeekStart(format(d, 'yyyy-MM-dd'));
+  };
+
+  const handleDifficultyWeekNext = () => {
+    const d = new Date(difficultyWeekStart + 'T00:00:00');
+    d.setDate(d.getDate() + 7);
+    setDifficultyWeekStart(format(d, 'yyyy-MM-dd'));
+  };
+
+  const renderDifficultyPopup = () => {
+    const weekDates = getWeekDates(difficultyWeekStart);
+    const endDate = weekDates[6];
+    const startLabel = format(new Date(difficultyWeekStart + 'T00:00:00'), 'MMM d');
+    const endLabel = format(new Date(endDate + 'T00:00:00'), 'MMM d, yyyy');
+
+    return (
+      <PopupOverlay onClick={() => setShowDifficultyPopup(false)}>
+        <PopupWindow onClick={(e: React.MouseEvent) => e.stopPropagation()}>
+          <TitleBar>
+            <span>Assign Weekly Difficulty</span>
+            <TitleBarButton size="sm" onClick={() => setShowDifficultyPopup(false)}>&#10005;</TitleBarButton>
+          </TitleBar>
+          <PopupContent>
+            {/* Week navigation */}
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
+              <Button size="sm" onClick={handleDifficultyWeekPrev}>&#9664;</Button>
+              <span style={{ fontSize: 12, fontWeight: 'bold' }}>{startLabel} - {endLabel}</span>
+              <Button size="sm" onClick={handleDifficultyWeekNext}>&#9654;</Button>
+            </div>
+
+            {/* Day buttons */}
+            <div style={{ display: 'flex', justifyContent: 'space-between', gap: 4 }}>
+              {weekDates.map((date, i) => {
+                const tier = getDifficultyTier(date);
+                const isToday = date === today;
+                return (
+                  <TierDayColumn key={date}>
+                    <TierDayLabel $isToday={isToday}>{DAY_NAMES[i]}</TierDayLabel>
+                    <TierDayButton $tier={tier} onClick={() => handleCycleTier(date)}>
+                      {TIER_LABELS[tier][0]}
+                    </TierDayButton>
+                  </TierDayColumn>
+                );
+              })}
+            </div>
+
+            <div style={{ fontSize: 10, color: '#808080', textAlign: 'center', margin: '10px 0 4px' }}>
+              Tap a day to cycle: Low &rarr; Med &rarr; High
+            </div>
+
+            <TierLegend>
+              <TierLegendItem><TierLegendDot $color="#90EE90" /> Low</TierLegendItem>
+              <TierLegendItem><TierLegendDot $color="#FFD700" /> Med</TierLegendItem>
+              <TierLegendItem><TierLegendDot $color="#FF6B6B" /> High</TierLegendItem>
+            </TierLegend>
+
+            <div style={{ marginTop: 12 }}>
+              <Button fullWidth onClick={() => setShowDifficultyPopup(false)}>Done</Button>
+            </div>
+          </PopupContent>
+        </PopupWindow>
+      </PopupOverlay>
+    );
+  };
+
   const renderTodo = () => {
     return (
       <>
+        <div style={{ marginBottom: 8 }}>
+          <Button
+            fullWidth
+            onClick={() => {
+              setDifficultyWeekStart(getWeekStart(today));
+              setShowDifficultyPopup(true);
+            }}
+            style={{ fontSize: 11, padding: '4px 8px' }}
+          >
+            Assign Difficulty
+          </Button>
+        </div>
+
         <ToggleGroup>
           <ToggleButton
             $active={todoSubTab === 'habits'}
@@ -1924,6 +2129,9 @@ export default function MobilePage() {
           </PopupWindow>
         </PopupOverlay>
       )}
+
+      {/* Difficulty Tier Popup */}
+      {showDifficultyPopup && renderDifficultyPopup()}
 
       {/* Add To-Do Popup */}
       {showAddTodo && (

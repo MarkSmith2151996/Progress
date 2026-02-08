@@ -251,6 +251,7 @@ ${customContext || 'No additional context provided.'}
 
 ## CURRENT STATE
 Date: ${ctx.today}
+Day difficulty: ${(() => { const todayLog = ctx.logs.find(l => l.date === ctx.today); const tier = todayLog?.difficulty_tier || 'med'; return tier === 'low' ? 'LOW (light day - fewer expectations)' : tier === 'high' ? 'HIGH (full day - push hard)' : 'MEDIUM (normal day)'; })()}
 Streak: ${m.streak} days
 
 ## ACTIVE GOALS

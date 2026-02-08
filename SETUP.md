@@ -94,13 +94,13 @@ git push origin main
 | Table | Primary Key | Purpose | Key Columns |
 |-------|------------|---------|-------------|
 | `goals` | goal_id (text) | Goal tracking | title, type, target_value, current_value, starting_value, deadline, status, keywords[], increment_type |
-| `daily_logs` | date (date) | Daily journal | day_type, energy_level, hours_slept, work_hours, overall_rating, notes, accomplishments[] |
+| `daily_logs` | date (date) | Daily journal | day_type, difficulty_tier (low/med/high), energy_level, hours_slept, work_hours, overall_rating, notes, accomplishments[] |
 | `habits` | habit_id (text) | Habit definitions | name, target_minutes, days_active[], active, sort_order |
 | `habit_completions` | completion_id (text) | Daily check-offs | habit_id (FK), date, completed |
 | `tasks` | task_id (text) | Day-specific to-dos | goal_id (FK), description, planned_date, status, time_estimated, notes |
 | `coach_messages` | id (uuid) | Chat relay queue | session_id, role, content, platform, status (pending/processing/completed/error) |
 | `coach_digests` | id (uuid) | AI summaries | digest_type (daily/weekly), content, metrics (jsonb), digest_date |
-| `user_settings` | id (text) | Preferences | coach_context, theme |
+| `user_settings` | id (text) | Preferences | coach_context, theme, preferences (jsonb: display_name, accent_color, font_size, keyboard_size, coach_tone, digest_enabled, etc.) |
 
 ### Real-time
 All tables have real-time subscriptions enabled (`ALTER PUBLICATION supabase_realtime ADD TABLE ...`). Changes on mobile appear on desktop instantly.
@@ -301,6 +301,13 @@ Progress-temp/
 - Auto-goal update toast when Claude matches
 
 ### Tab 2: To Do
+**"Assign Difficulty" button** — opens week selector popup to set daily difficulty tiers:
+- Week navigation with arrows (Mon-Sun calendar view)
+- Tap each day to cycle: Low (green) → Med (orange) → High (red)
+- Affects expectations — Low days = lighter workload, High = push harder
+- Tier shown as colored badge in task header ("Today LOW — 2/5 done")
+- Saves to `daily_logs.difficulty_tier`, syncs via Supabase
+
 **Sub-tab: Habits**
 - Recurring daily habits with checkboxes
 - Shows streak count per habit
@@ -598,7 +605,7 @@ The server builds a detailed system prompt including:
 ```typescript
 Goal          { goal_id, title, type, target_value, current_value, starting_value, deadline, status, keywords[], increment_type }
 Task          { task_id, goal_id, description, planned_date, completed_date, status, time_estimated, notes }
-DailyLog      { date, day_type, energy_level, hours_slept, work_hours, overall_rating, notes, accomplishments[] }
+DailyLog      { date, day_type, difficulty_tier, energy_level, hours_slept, work_hours, overall_rating, notes, accomplishments[] }
 Habit         { habit_id, name, target_minutes, days_active[], active, sort_order }
 HabitCompletion { completion_id, habit_id, date, completed }
 ```
@@ -609,6 +616,7 @@ GoalType      = 'monthly' | 'weekly_chunk' | 'bonus'
 GoalStatus    = 'active' | 'completed' | 'abandoned' | 'paused'
 TaskStatus    = 'planned' | 'completed' | 'skipped' | 'rolled'
 DayType       = 'school' | 'work' | 'both' | 'off'
+DifficultyTier = 'low' | 'med' | 'high'
 AlertLevel    = 'critical' | 'warning' | 'info' | 'positive'
 ```
 
@@ -632,28 +640,24 @@ ParsedAccomplishment { description, goalId, timeSpent, difficulty, category }
 
 ## Win95 Keyboard — Detailed
 
-**File:** `src/components/mobile/Win95Keyboard.tsx` (230 lines)
+**File:** `src/components/mobile/Win95Keyboard.tsx`
 **Rendered in:** `src/app/mobile/layout.tsx` (global for all mobile pages)
 
 ### How it works
 1. Listens for `focusin` events on the document
 2. When an `<input>` or `<textarea>` gains focus (except `type="date"`), shows keyboard
-3. Uses the **native value setter trick** to update React controlled inputs:
-   ```javascript
-   Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set.call(el, newValue)
-   el.dispatchEvent(new Event('input', { bubbles: true }))
-   ```
+3. Uses the **native value setter trick** to update React controlled inputs
 4. `onMouseDown`/`onTouchStart` use `preventDefault()` to stop keyboard from stealing focus
 5. "Done" button hides keyboard and blurs input
 
-### Layout
-```
-[ 1 ][ 2 ][ 3 ][ 4 ][ 5 ][ 6 ][ 7 ][ 8 ][ 9 ][ 0 ][ <- ]
-  [ q ][ w ][ e ][ r ][ t ][ y ][ u ][ i ][ o ][ p ]
-   [ a ][ s ][ d ][ f ][ g ][ h ][ j ][ k ][ l ]
-[Shift][ z ][ x ][ c ][ v ][ b ][ n ][ m ][ . ][ ? ]
-     [ , ][ ' ][      Space      ][ Enter ]
-```
+### Flex-based layout
+Keys use `flex: 1` to fill the full screen width. Special keys use proportional flex values (Shift/Backspace: 1.5, Space: 5, Enter: 1.8). Three configurable sizes via Settings > Appearance > Keyboard Size:
+
+| Size | Key Height | Font Size |
+|------|-----------|-----------|
+| Compact | 36px | 13px |
+| Medium | 42px | 15px |
+| Large | 50px | 17px |
 
 ### Native keyboard suppression
 `StyledInput` and `StyledTextArea` in `MobileShared.tsx` use `.attrs({ inputMode: 'none' })` which tells iOS/Android not to show the native keyboard. Date inputs are excluded.

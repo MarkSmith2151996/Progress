@@ -9,56 +9,36 @@ import { KeyboardSize } from '@/types';
 // ============================================
 // WIN95 GLOBAL ON-SCREEN KEYBOARD
 // Auto-appears when any input/textarea is focused.
-// Uses native value setter to work with React controlled inputs.
+// Uses flex layout so keys fill the full screen width.
 // Size configurable via settings (compact / medium / large).
 // ============================================
 
 const SIZE_CONFIG: Record<KeyboardSize, {
-  keyWidth: number;
   keyHeight: number;
-  gap: number;
   fontSize: number;
+  gap: number;
   padding: number;
-  wideKeyWidth: number;
-  spaceWidth: number;
-  enterWidth: number;
-  specialWidth: number;
   hideFont: number;
 }> = {
   compact: {
-    keyWidth: 24,
-    keyHeight: 28,
+    keyHeight: 36,
+    fontSize: 13,
     gap: 2,
-    fontSize: 10,
     padding: 4,
-    wideKeyWidth: 36,
-    spaceWidth: 120,
-    enterWidth: 42,
-    specialWidth: 24,
-    hideFont: 9,
-  },
-  medium: {
-    keyWidth: 28,
-    keyHeight: 34,
-    gap: 3,
-    fontSize: 12,
-    padding: 6,
-    wideKeyWidth: 44,
-    spaceWidth: 150,
-    enterWidth: 50,
-    specialWidth: 28,
     hideFont: 10,
   },
-  large: {
-    keyWidth: 34,
+  medium: {
     keyHeight: 42,
-    gap: 4,
-    fontSize: 14,
+    fontSize: 15,
+    gap: 3,
+    padding: 6,
+    hideFont: 11,
+  },
+  large: {
+    keyHeight: 50,
+    fontSize: 17,
+    gap: 3,
     padding: 8,
-    wideKeyWidth: 52,
-    spaceWidth: 180,
-    enterWidth: 60,
-    specialWidth: 34,
     hideFont: 12,
   },
 };
@@ -82,7 +62,7 @@ const KeyboardContainer = styled.div<{ $padding: number }>`
 
 const KeyRow = styled.div<{ $gap: number }>`
   display: flex;
-  justify-content: center;
+  width: 100%;
   gap: ${props => props.$gap}px;
   margin-bottom: ${props => props.$gap}px;
 
@@ -91,17 +71,17 @@ const KeyRow = styled.div<{ $gap: number }>`
   }
 `;
 
-const Key = styled(Button)<{ $w: number; $h: number; $fs: number }>`
-  min-width: ${props => props.$w}px;
+const Key = styled(Button)<{ $h: number; $fs: number; $flex?: number }>`
+  flex: ${props => props.$flex || 1};
   height: ${props => props.$h}px;
-  padding: 0 2px;
+  padding: 0;
   font-size: ${props => props.$fs}px;
   font-family: 'MS Sans Serif', 'Microsoft Sans Serif', Arial, sans-serif;
   display: flex;
   align-items: center;
   justify-content: center;
-  flex-shrink: 0;
   cursor: pointer;
+  min-width: 0;
 `;
 
 const HideBar = styled.div`
@@ -153,22 +133,15 @@ export default function Win95Keyboard() {
       const target = e.target as HTMLElement;
       if (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA') {
         const input = target as HTMLInputElement;
-        // Skip date inputs and selects — they use native pickers
         if (input.type === 'date' || input.type === 'select-one') return;
         activeRef.current = input;
         setVisible(true);
       }
     };
 
-    const handleBlur = () => {
-      // Delay to prevent keyboard from hiding when tapping keys
-    };
-
     document.addEventListener('focusin', handleFocus);
-    document.addEventListener('focusout', handleBlur);
     return () => {
       document.removeEventListener('focusin', handleFocus);
-      document.removeEventListener('focusout', handleBlur);
     };
   }, []);
 
@@ -211,6 +184,9 @@ export default function Win95Keyboard() {
 
   if (!visible) return null;
 
+  const h = cfg.keyHeight;
+  const fs = cfg.fontSize;
+
   return (
     <KeyboardOverlay
       onMouseDown={(e) => { e.preventDefault(); }}
@@ -223,11 +199,11 @@ export default function Win95Keyboard() {
         {/* Number row */}
         <KeyRow $gap={cfg.gap}>
           {ROW_NUMBERS.map((key) => (
-            <Key key={key} $w={cfg.keyWidth} $h={cfg.keyHeight} $fs={cfg.fontSize} onClick={() => handleKey(key)}>
+            <Key key={key} $h={h} $fs={fs} onClick={() => handleKey(key)}>
               {key}
             </Key>
           ))}
-          <Key $w={cfg.wideKeyWidth} $h={cfg.keyHeight} $fs={cfg.fontSize} onClick={handleBackspace}>
+          <Key $h={h} $fs={fs} $flex={1.5} onClick={handleBackspace}>
             {'<-'}
           </Key>
         </KeyRow>
@@ -235,7 +211,7 @@ export default function Win95Keyboard() {
         {/* QWERTY row */}
         <KeyRow $gap={cfg.gap}>
           {ROWS_ALPHA[0].map((key) => (
-            <Key key={key} $w={cfg.keyWidth} $h={cfg.keyHeight} $fs={cfg.fontSize} onClick={() => handleKey(key)}>
+            <Key key={key} $h={h} $fs={fs} onClick={() => handleKey(key)}>
               {shifted ? key.toUpperCase() : key}
             </Key>
           ))}
@@ -244,7 +220,7 @@ export default function Win95Keyboard() {
         {/* ASDF row */}
         <KeyRow $gap={cfg.gap}>
           {ROWS_ALPHA[1].map((key) => (
-            <Key key={key} $w={cfg.keyWidth} $h={cfg.keyHeight} $fs={cfg.fontSize} onClick={() => handleKey(key)}>
+            <Key key={key} $h={h} $fs={fs} onClick={() => handleKey(key)}>
               {shifted ? key.toUpperCase() : key}
             </Key>
           ))}
@@ -252,28 +228,24 @@ export default function Win95Keyboard() {
 
         {/* ZXCV row + shift */}
         <KeyRow $gap={cfg.gap}>
-          <Key
-            $w={cfg.wideKeyWidth} $h={cfg.keyHeight} $fs={cfg.fontSize}
-            onClick={() => setShifted(!shifted)}
-            active={shifted}
-          >
+          <Key $h={h} $fs={fs} $flex={1.5} onClick={() => setShifted(!shifted)} active={shifted}>
             Shift
           </Key>
           {ROWS_ALPHA[2].map((key) => (
-            <Key key={key} $w={cfg.keyWidth} $h={cfg.keyHeight} $fs={cfg.fontSize} onClick={() => handleKey(key)}>
+            <Key key={key} $h={h} $fs={fs} onClick={() => handleKey(key)}>
               {shifted ? key.toUpperCase() : key}
             </Key>
           ))}
-          <Key $w={cfg.specialWidth} $h={cfg.keyHeight} $fs={cfg.fontSize} onClick={() => handleKey('.')}>.</Key>
-          <Key $w={cfg.specialWidth} $h={cfg.keyHeight} $fs={cfg.fontSize} onClick={() => handleKey('?')}>?</Key>
+          <Key $h={h} $fs={fs} onClick={() => handleKey('.')}>.</Key>
+          <Key $h={h} $fs={fs} onClick={() => handleKey('?')}>?</Key>
         </KeyRow>
 
         {/* Space + special keys row */}
         <KeyRow $gap={cfg.gap}>
-          <Key $w={cfg.specialWidth} $h={cfg.keyHeight} $fs={cfg.fontSize} onClick={() => handleKey(',')}>,</Key>
-          <Key $w={cfg.specialWidth} $h={cfg.keyHeight} $fs={cfg.fontSize} onClick={() => handleKey("'")}>&apos;</Key>
-          <Key $w={cfg.spaceWidth} $h={cfg.keyHeight} $fs={cfg.fontSize} onClick={() => handleKey(' ')}>Space</Key>
-          <Key $w={cfg.enterWidth} $h={cfg.keyHeight} $fs={cfg.fontSize} onClick={handleEnter}>Enter</Key>
+          <Key $h={h} $fs={fs} onClick={() => handleKey(',')}>,</Key>
+          <Key $h={h} $fs={fs} onClick={() => handleKey("'")}>&apos;</Key>
+          <Key $h={h} $fs={fs} $flex={5} onClick={() => handleKey(' ')}>Space</Key>
+          <Key $h={h} $fs={fs} $flex={1.8} onClick={handleEnter}>Enter</Key>
         </KeyRow>
       </KeyboardContainer>
     </KeyboardOverlay>

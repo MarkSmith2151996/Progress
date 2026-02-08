@@ -63,9 +63,12 @@ export interface Task {
 // DAILY LOGS
 // ============================================
 
+export type DifficultyTier = 'low' | 'med' | 'high';
+
 export interface DailyLog {
   date: string;
   day_type: DayType | null;
+  difficulty_tier?: DifficultyTier;
   energy_level: number | null;
   hours_slept: number | null;
   work_hours: number | null;

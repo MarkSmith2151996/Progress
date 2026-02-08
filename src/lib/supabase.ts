@@ -71,6 +71,7 @@ interface DbGoal {
 interface DbDailyLog {
   date: string;
   day_type: string | null;
+  difficulty_tier: string | null;
   energy_level: number | null;
   hours_slept: number | null;
   work_hours: number | null;
@@ -165,6 +166,7 @@ function dbToDailyLog(db: DbDailyLog): DailyLog {
   return {
     date: db.date,
     day_type: db.day_type as DailyLog['day_type'],
+    difficulty_tier: (db.difficulty_tier as DailyLog['difficulty_tier']) ?? undefined,
     energy_level: db.energy_level,
     hours_slept: db.hours_slept,
     work_hours: db.work_hours,
@@ -182,6 +184,7 @@ function dailyLogToDb(log: DailyLog): DbDailyLog {
   return {
     date: log.date,
     day_type: log.day_type,
+    difficulty_tier: log.difficulty_tier ?? null,
     energy_level: log.energy_level,
     hours_slept: log.hours_slept,
     work_hours: log.work_hours,

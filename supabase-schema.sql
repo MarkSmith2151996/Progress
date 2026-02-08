@@ -26,6 +26,7 @@ CREATE TABLE IF NOT EXISTS goals (
 CREATE TABLE IF NOT EXISTS daily_logs (
   date DATE PRIMARY KEY,
   day_type TEXT,
+  difficulty_tier TEXT DEFAULT 'med',  -- 'low' | 'med' | 'high'
   energy_level INTEGER,
   hours_slept REAL,
   work_hours REAL,
