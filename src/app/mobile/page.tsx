@@ -1531,9 +1531,8 @@ export default function MobilePage() {
                 const isToday = date === today;
                 return (
                   <TierDayColumn key={date}>
-                    <TierDayLabel $isToday={isToday}>{new Date(date + 'T00:00:00').getDate()}</TierDayLabel>
                     <TierDayButton $tier={tier} onClick={() => handleCycleTier(date)}>
-                      {TIER_LABELS[tier][0]}
+                      {new Date(date + 'T00:00:00').getDate()}
                     </TierDayButton>
                   </TierDayColumn>
                 );
