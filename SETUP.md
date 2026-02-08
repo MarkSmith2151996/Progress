@@ -1,6 +1,6 @@
 # Progress Tracker - Complete Documentation
 
-> **Last Updated:** February 6, 2026
+> **Last Updated:** February 8, 2026
 > **Main File:** `C:\Users\Big A\Progress-temp`
 > **Mobile:** https://progress-umber-six.vercel.app/mobile
 > **Desktop:** `dist\win-unpacked\Progress Tracker.exe`
@@ -74,7 +74,7 @@ git push origin main
 |-------|-----------|---------|
 | Frontend | Next.js 14, React 18 | App framework, SSR |
 | UI | react95, styled-components | Windows 95 retro theme |
-| State | Zustand | goalStore, logStore, coachStore |
+| State | Zustand | goalStore, logStore, coachStore, settingsStore |
 | Database | Supabase (Postgres) | Cloud storage + real-time sync |
 | Desktop | Electron 40 | Windows app wrapper |
 | AI | Claude CLI | Coach chat, goal matching, digests |
@@ -196,11 +196,11 @@ Progress-temp/
 │   │   ├── layout.tsx                 # Root layout (React95Provider)
 │   │   ├── login/page.tsx             # PIN login page
 │   │   ├── mobile/
-│   │   │   ├── page.tsx               # Main mobile UI (2,133 lines) — 5 tabs
+│   │   │   ├── page.tsx               # Main mobile UI (2,351 lines) — 5 tabs
 │   │   │   ├── layout.tsx             # Mobile layout (PWA meta, Win95 keyboard)
 │   │   │   ├── coach/page.tsx         # Redirects to main page Coach tab
 │   │   │   ├── calendar/page.tsx      # Monthly calendar + day log editor (575 lines)
-│   │   │   └── settings/page.tsx      # Habit/goal mgmt, import/export (511 lines)
+│   │   │   └── settings/page.tsx      # Comprehensive settings (886 lines) — 7 collapsible sections
 │   │   └── api/
 │   │       ├── auth/verify-pin/route.ts
 │   │       ├── goals/route.ts
@@ -231,19 +231,19 @@ Progress-temp/
 │   │   ├── debug/DebugPanel95.tsx
 │   │   ├── mobile/MobileShared.tsx    # 30+ shared styled components
 │   │   ├── mobile/Win95Icons.tsx      # CSS pixel art icons (317 lines)
-│   │   ├── mobile/Win95Keyboard.tsx   # Global on-screen keyboard (230 lines)
+│   │   ├── mobile/Win95Keyboard.tsx   # Global on-screen keyboard (253 lines) — flex layout
 │   │   ├── providers/React95Provider.tsx
 │   │   └── shared/                    # Alert, Button, LoadingSlider, etc.
 │   │
 │   ├── stores/
 │   │   ├── goalStore.ts               # Goals CRUD + real-time (200 lines)
-│   │   ├── logStore.ts                # Logs, habits, tasks, completions (500 lines)
+│   │   ├── logStore.ts                # Logs, habits, tasks, completions (533 lines)
 │   │   ├── coachStore.ts              # Coach chat + digest + relay (275 lines)
-│   │   ├── settingsStore.ts           # Theme, coach_context
+│   │   ├── settingsStore.ts           # All preferences + Supabase JSONB sync (254 lines)
 │   │   └── analyticsStore.ts          # Analytics/patterns
 │   │
 │   ├── lib/
-│   │   ├── supabase.ts                # All Supabase CRUD + subscriptions (782 lines)
+│   │   ├── supabase.ts                # All Supabase CRUD + subscriptions (803 lines)
 │   │   ├── browserStorage.ts          # localStorage fallback (192 lines)
 │   │   ├── goalUpdater.ts             # Smart goal matching: Claude + keywords (282 lines)
 │   │   ├── claude.ts                  # Claude CLI wrapper + NLP parsing (584 lines)
@@ -265,7 +265,7 @@ Progress-temp/
 │   │   ├── useMediaQuery.ts           # Responsive breakpoints
 │   │   └── useTheme.ts                # Theme hook
 │   │
-│   ├── types/index.ts                 # All TypeScript types (403 lines)
+│   ├── types/index.ts                 # All TypeScript types (448 lines)
 │   └── middleware.ts                  # PIN auth + Vercel route redirects
 │
 ├── main/
@@ -274,7 +274,7 @@ Progress-temp/
 │   └── preload.ts                     # Electron IPC bridge (9 methods)
 │
 ├── coach-server/
-│   ├── server.js                      # Supabase relay → Claude CLI (517 lines)
+│   ├── server.js                      # Supabase relay → Claude CLI (532 lines)
 │   ├── package.json                   # @supabase/supabase-js, dotenv
 │   ├── .env                           # Supabase credentials (gitignored)
 │   └── start.bat                      # Windows startup script
@@ -460,10 +460,12 @@ window.electronAPI = {
 ```
 
 ### System Prompt Template
-The server builds a detailed system prompt including:
-- Coach role (direct, data-driven, concise)
-- User context (age 17, goals: SAT 1500+, $36K savings, FBA prep)
+The server builds a detailed system prompt using **dynamic preferences** from `user_settings.preferences` JSONB:
+- Coach role with configurable tone (direct / encouraging / balanced — set in Settings)
+- User's display name (from preferences, not hardcoded)
+- Custom coach context (free-text background info, set in Settings > Coach)
 - Current date + logging streak
+- **Today's difficulty tier** (Low/Med/High — from `daily_logs.difficulty_tier`)
 - Active goals with progress % and days remaining
 - This week's task completion + habit rate
 - Today's habits with completion status
@@ -498,7 +500,7 @@ The server builds a detailed system prompt including:
 | subscribeToRealtime() | Listen for goal changes |
 | unsubscribeFromRealtime() | Stop listening |
 
-### logStore.ts (500 lines)
+### logStore.ts (533 lines)
 | State | Type | Description |
 |-------|------|-------------|
 | dailyLogs | DailyLog[] | All daily logs |
@@ -521,6 +523,8 @@ The server builds a detailed system prompt including:
 | toggleHabit(habitId, date) | Toggle habit completion |
 | getTodayHabits() | Get habits active today |
 | getTasksByDate(date) | Get tasks for specific date |
+| getDifficultyTier(date) | Get tier for a date (defaults to 'med') |
+| setDifficultyTier(date, tier) | Set Low/Med/High tier for a date |
 
 ### coachStore.ts (275 lines)
 | State | Type | Description |
@@ -546,19 +550,56 @@ The server builds a detailed system prompt including:
 - **Electron**: `window.electronAPI.coachChat(message)` → direct Claude CLI
 - **Web/Mobile**: Insert into `coach_messages` table → coach server processes → response via subscription
 
+### settingsStore.ts (254 lines)
+| State | Type | Description |
+|-------|------|-------------|
+| display_name | string | User's name (default: 'Antonio') |
+| default_tab | number | Tab to open on launch (0-4) |
+| accent_color | string | Theme accent color (hex) |
+| font_size | FontSize | small/medium/large |
+| keyboard_size | KeyboardSize | compact/medium/large |
+| coach_tone | CoachTone | direct/encouraging/balanced |
+| coach_context | string | Custom coach background info |
+| digest_enabled | boolean | Enable daily digests |
+| digest_frequency | DigestFrequency | daily/weekly |
+| show_streaks | boolean | Show streak counts |
+| notifications_enabled | boolean | Push notifications |
+
+| Method | Description |
+|--------|-------------|
+| setDisplayName(name) | Update name + sync |
+| setDefaultTab(tab) | Update default tab + sync |
+| setAccentColor(color) | Update color + CSS variable + sync |
+| setFontSize(size) | Update font + CSS variable + sync |
+| setKeyboardSize(size) | Update keyboard preset + sync |
+| setCoachTone(tone) | Update coach personality + sync |
+| setCoachContext(ctx) | Update custom context + sync |
+| setDigestEnabled(on) | Toggle digest + sync |
+| setDigestFrequency(freq) | Update frequency + sync |
+| fetchSettings() | Load from Supabase JSONB + apply CSS vars |
+| syncPreferences() | Debounced save to Supabase (1.5s) |
+
+**Persistence:** Zustand `persist` middleware saves to localStorage instantly. Changes also sync to `user_settings.preferences` JSONB column in Supabase after a 1.5s debounce.
+
+**CSS Variables:** `setAccentColor` and `setFontSize` update CSS custom properties on `document.documentElement`:
+- `--accent-color` — used by MobileContainer background, layout background
+- `--font-base`, `--font-list`, `--font-label`, `--font-meta` — used by MobileShared components
+
 ---
 
 ## Key Libraries — Detailed
 
-### supabase.ts (782 lines)
+### supabase.ts (803 lines)
 - `getSupabaseClient()` — lazy-init with env vars
 - `isSupabaseConfigured()` — check if URL + key present
-- Type converters: `dbToGoal`, `goalToDb`, etc. (snake_case ↔ camelCase)
+- Type converters: `dbToGoal`, `goalToDb`, `dbToDailyLog`, `dailyLogToDb`, etc. (snake_case ↔ camelCase)
 - CRUD for all 5 main tables (fetch, upsert, delete)
 - Real-time subscriptions for goals, daily_logs, habits, habit_completions
 - Coach message CRUD: `getCoachMessages`, `sendCoachMessage`, `subscribeToCoachMessages`
 - Coach digest: `getLatestDigest`, `getDigestHistory`
-- User settings: `fetchUserSettings`, `upsertUserSettings`, `updateCoachContext`
+- User settings: `fetchUserSettings`, `upsertUserSettings`, `updateCoachContext`, `saveUserPreferences`
+- `saveUserPreferences(prefs)` — upserts JSONB blob to `user_settings.preferences` column
+- `DbDailyLog` includes `difficulty_tier` field; converters handle it automatically
 
 ### browserStorage.ts (192 lines)
 - localStorage with `progress95_` prefix
@@ -599,7 +640,7 @@ The server builds a detailed system prompt including:
 
 ---
 
-## TypeScript Types (types/index.ts — 403 lines)
+## TypeScript Types (types/index.ts — 448 lines)
 
 ### Core Types
 ```typescript
@@ -610,14 +651,18 @@ Habit         { habit_id, name, target_minutes, days_active[], active, sort_orde
 HabitCompletion { completion_id, habit_id, date, completed }
 ```
 
-### Status Types
+### Status & Settings Types
 ```typescript
-GoalType      = 'monthly' | 'weekly_chunk' | 'bonus'
-GoalStatus    = 'active' | 'completed' | 'abandoned' | 'paused'
-TaskStatus    = 'planned' | 'completed' | 'skipped' | 'rolled'
-DayType       = 'school' | 'work' | 'both' | 'off'
-DifficultyTier = 'low' | 'med' | 'high'
-AlertLevel    = 'critical' | 'warning' | 'info' | 'positive'
+GoalType        = 'monthly' | 'weekly_chunk' | 'bonus'
+GoalStatus      = 'active' | 'completed' | 'abandoned' | 'paused'
+TaskStatus      = 'planned' | 'completed' | 'skipped' | 'rolled'
+DayType         = 'school' | 'work' | 'both' | 'off'
+DifficultyTier  = 'low' | 'med' | 'high'
+AlertLevel      = 'critical' | 'warning' | 'info' | 'positive'
+FontSize        = 'small' | 'medium' | 'large'
+KeyboardSize    = 'compact' | 'medium' | 'large'
+CoachTone       = 'direct' | 'encouraging' | 'balanced'
+DigestFrequency = 'daily' | 'weekly'
 ```
 
 ### Coach Types
@@ -629,10 +674,19 @@ CoachMessageStatus = 'pending' | 'processing' | 'completed' | 'error'
 ContextPackage   { currentDate, energy, activeGoals[], tasksPlanned/Completed, weeklyScore, habitsToday[], streak, alerts[], patterns[] }
 ```
 
+### Settings Type
+```typescript
+UserSettings {
+  theme, coach_minimized, week_colors, notifications_enabled,
+  display_name, default_tab, accent_color, font_size, keyboard_size,
+  coach_tone, coach_context, digest_enabled, digest_frequency, show_streaks
+}
+```
+
 ### Other Types
 ```typescript
 GoalWithProgress, HabitWithStatus, Session, ExternalFactor, WeeklySnapshot, MonthlyReview
-CustomField, FieldProposal, DailyMetrics, WeeklyMetrics, UserSettings, Theme, Alert
+CustomField, FieldProposal, DailyMetrics, WeeklyMetrics, Theme, Alert
 ParsedAccomplishment { description, goalId, timeSpent, difficulty, category }
 ```
 
@@ -680,6 +734,56 @@ Keys use `flex: 1` to fill the full screen width. Special keys use proportional 
 | Sync | SyncStatusBar, SyncStatusText, SyncStatusIcon, RefreshButton |
 | Empty | EmptyState, EmptyStateIcon, EmptyStateTitle, EmptyStateText |
 | Other | SectionHeader, AddButton, AccomplishmentItem, AccomplishmentContent |
+
+---
+
+## Settings Page — Detailed
+
+**File:** `src/app/mobile/settings/page.tsx` (886 lines)
+
+Comprehensive settings with 7 collapsible Win95-styled sections. All changes auto-save (no Save button). Settings persist to localStorage instantly and sync to Supabase `user_settings.preferences` JSONB after 1.5s debounce.
+
+### Sections
+
+| # | Section | Settings |
+|---|---------|----------|
+| 1 | Profile | Display name, notifications toggle |
+| 2 | Appearance | Default tab (5 options), accent color (5 presets + custom), font size (S/M/L), keyboard size (compact/medium/large) |
+| 3 | Coach | Tone (direct/encouraging/balanced), digest toggle + frequency, show streaks, custom context (free-text) |
+| 4 | Habits | Manage habits (inline editing) |
+| 5 | Goals | Manage goals (inline editing) |
+| 6 | Data Management | Export JSON, import JSON, clear all data (Win95 confirmation dialog) |
+| 7 | About | Version info + links |
+
+### Custom Components
+- `CollapsibleHeader` / `SectionContent` — expandable Win95 sections with +/- toggle
+- `ColorSwatch` — circular accent color picker with checkmark on active
+- `ToggleSwitch` — Win95-styled on/off toggle
+- `DangerButton` — red button for destructive actions
+- `SettingRow` / `SettingLabel` — form layout
+
+---
+
+## CSS Variables System
+
+The app uses CSS custom properties for runtime theming, set by `settingsStore` on `document.documentElement`:
+
+### Accent Color
+```css
+--accent-color: #008080;   /* Default teal — configurable in Settings > Appearance */
+```
+Used by: `MobileContainer` background, `mobile/layout.tsx` body background
+
+### Font Sizes
+Set via `data-font-size` attribute on `<html>`:
+
+| Size | --font-base | --font-list | --font-label | --font-meta |
+|------|------------|------------|-------------|------------|
+| small | 13px | 12px | 11px | 10px |
+| medium | 15px | 13px | 12px | 11px |
+| large | 17px | 15px | 14px | 12px |
+
+Used by: `ListItemText`, `ListItemMeta`, `FormLabel`, `EmptyStateText`, `TabLabel` in MobileShared.tsx
 
 ---
 
