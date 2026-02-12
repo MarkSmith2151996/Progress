@@ -186,9 +186,9 @@ export function DayPopup({ date, isOpen, onClose }: DayPopupProps) {
                     >
                       <div style={{ color: 'var(--text-primary)' }}>{item.description}</div>
                       <div className="flex gap-3 mt-1" style={{ color: 'var(--text-muted)' }}>
-                        {item.timeSpent && <span>⏱ {item.timeSpent} min</span>}
-                        {item.difficulty && <span>⚡ {item.difficulty}/5</span>}
-                        {item.category && <span>📁 {item.category}</span>}
+                        {item.timeSpent && <span>{item.timeSpent} min</span>}
+                        {item.difficulty && <span>D:{item.difficulty}/5</span>}
+                        {item.category && <span>[{item.category}]</span>}
                         {item.goalId && <span style={{ color: 'var(--accent-success)' }}>✓ linked</span>}
                       </div>
                     </div>

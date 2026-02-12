@@ -2,6 +2,7 @@ import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import { UserSettings, FontSize, KeyboardSize, CoachTone, DigestFrequency } from '@/types';
 import * as supabase from '@/lib/supabase';
+import { getThemeByName, deriveAccentColor } from '@/lib/themes';
 
 interface SettingsState extends UserSettings {
   isLoading: boolean;
@@ -21,6 +22,7 @@ interface SettingsState extends UserSettings {
   setDisplayName: (name: string) => void;
   setDefaultTab: (tab: number) => void;
   setAccentColor: (color: string) => void;
+  setReact95Theme: (theme: string) => void;
   setFontSize: (size: FontSize) => void;
   setCoachTone: (tone: CoachTone) => void;
   setDigestEnabled: (enabled: boolean) => void;
@@ -64,6 +66,7 @@ export const useSettingsStore = create<SettingsState>()(
       display_name: 'Antonio',
       default_tab: 3,
       accent_color: '#008080',
+      react95_theme: 'original',
       font_size: 'medium' as FontSize,
       coach_tone: 'direct' as CoachTone,
       digest_enabled: true,
@@ -121,6 +124,14 @@ export const useSettingsStore = create<SettingsState>()(
         debouncedSync(get().syncPreferences);
       },
 
+      setReact95Theme: (react95_theme) => {
+        const theme = getThemeByName(react95_theme);
+        const accent_color = deriveAccentColor(theme);
+        set({ react95_theme, accent_color });
+        document.documentElement.style.setProperty('--accent-color', accent_color);
+        debouncedSync(get().syncPreferences);
+      },
+
       setFontSize: (font_size) => {
         set({ font_size });
         document.documentElement.setAttribute('data-font-size', font_size);
@@ -161,6 +172,7 @@ export const useSettingsStore = create<SettingsState>()(
             display_name: state.display_name,
             default_tab: state.default_tab,
             accent_color: state.accent_color,
+            react95_theme: state.react95_theme,
             font_size: state.font_size,
             coach_tone: state.coach_tone,
             coach_context: state.coach_context,
@@ -191,6 +203,7 @@ export const useSettingsStore = create<SettingsState>()(
                   if (prefs.display_name) updates.display_name = prefs.display_name as string;
                   if (prefs.default_tab !== undefined) updates.default_tab = prefs.default_tab as number;
                   if (prefs.accent_color) updates.accent_color = prefs.accent_color as string;
+                  if (prefs.react95_theme) updates.react95_theme = prefs.react95_theme as string;
                   if (prefs.font_size) updates.font_size = prefs.font_size as FontSize;
                   if (prefs.coach_tone) updates.coach_tone = prefs.coach_tone as CoachTone;
                   if (prefs.coach_context) updates.coach_context = prefs.coach_context as string;
@@ -242,6 +255,7 @@ export const useSettingsStore = create<SettingsState>()(
         display_name: state.display_name,
         default_tab: state.default_tab,
         accent_color: state.accent_color,
+        react95_theme: state.react95_theme,
         font_size: state.font_size,
         coach_tone: state.coach_tone,
         digest_enabled: state.digest_enabled,

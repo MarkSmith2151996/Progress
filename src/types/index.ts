@@ -354,7 +354,7 @@ export interface ParsedAccomplishment {
 // ============================================
 
 export type FontSize = 'small' | 'medium' | 'large';
-export type KeyboardSize = 'compact' | 'medium' | 'large';
+export type KeyboardSize = 'compact' | 'medium' | 'large' | 'xlarge';
 export type CoachTone = 'direct' | 'encouraging' | 'balanced';
 export type DigestFrequency = 'daily' | 'weekly';
 
@@ -368,6 +368,7 @@ export interface UserSettings {
   // Appearance
   default_tab: number;
   accent_color: string;
+  react95_theme: string;
   font_size: FontSize;
   // Coach
   coach_tone: CoachTone;

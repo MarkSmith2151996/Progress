@@ -41,6 +41,13 @@ const SIZE_CONFIG: Record<KeyboardSize, {
     padding: 8,
     hideFont: 12,
   },
+  xlarge: {
+    keyHeight: 60,
+    fontSize: 20,
+    gap: 4,
+    padding: 10,
+    hideFont: 14,
+  },
 };
 
 const KeyboardOverlay = styled.div`

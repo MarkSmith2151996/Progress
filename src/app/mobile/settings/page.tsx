@@ -8,6 +8,7 @@ import { useLogStore } from '@/stores/logStore';
 import { useGoalStore } from '@/stores/goalStore';
 import { useSettingsStore } from '@/stores/settingsStore';
 import { FontSize, KeyboardSize, CoachTone, DigestFrequency } from '@/types';
+import { CURATED_THEMES, getThemeByName } from '@/lib/themes';
 import {
   MobileContainer,
   MainWindow,
@@ -140,6 +141,28 @@ const ColorSwatch = styled.button<{ $color: string; $active?: boolean }>`
   }
 `;
 
+const ThemeChip = styled.button<{ $active?: boolean; $bgColor: string; $light?: boolean }>`
+  padding: 6px 4px;
+  font-size: 10px;
+  font-family: inherit;
+  background: ${props => props.$bgColor};
+  color: ${props => props.$light ? '#000' : '#fff'};
+  border: 2px solid;
+  border-color: ${props => props.$active ? '#000' : '#808080'};
+  box-shadow: ${props => props.$active ? 'inset 0 0 0 2px #fff' : 'none'};
+  cursor: pointer;
+  text-align: center;
+  min-height: 28px;
+`;
+
+function isLightColor(hex: string): boolean {
+  const c = hex.replace('#', '');
+  const r = parseInt(c.substring(0, 2), 16);
+  const g = parseInt(c.substring(2, 4), 16);
+  const b = parseInt(c.substring(4, 6), 16);
+  return (r * 299 + g * 587 + b * 114) / 1000 > 128;
+}
+
 const ToggleSwitch = styled.button<{ $on?: boolean }>`
   width: 44px;
   height: 24px;
@@ -266,21 +289,21 @@ const habitColors = [
   '#fd79a8', '#a29bfe', '#00b894', '#e17055', '#74b9ff',
 ];
 
-function getHabitEmoji(name: string): string {
+function getHabitIcon(name: string): string {
   const lower = name.toLowerCase();
-  if (lower.includes('gym') || lower.includes('workout') || lower.includes('exercise')) return '💪';
-  if (lower.includes('read')) return '📚';
-  if (lower.includes('meditat')) return '🧘';
-  if (lower.includes('water') || lower.includes('drink')) return '💧';
-  if (lower.includes('sleep') || lower.includes('bed')) return '😴';
-  if (lower.includes('walk') || lower.includes('run')) return '🏃';
-  if (lower.includes('study') || lower.includes('sat') || lower.includes('learn')) return '📖';
-  if (lower.includes('code') || lower.includes('program')) return '💻';
-  if (lower.includes('eat') || lower.includes('diet') || lower.includes('food')) return '🥗';
-  if (lower.includes('journal') || lower.includes('write')) return '✍️';
-  if (lower.includes('pray') || lower.includes('church')) return '🙏';
-  if (lower.includes('save') || lower.includes('money')) return '💰';
-  return '✓';
+  if (lower.includes('gym') || lower.includes('workout') || lower.includes('exercise')) return '*';
+  if (lower.includes('read')) return 'R';
+  if (lower.includes('meditat')) return '~';
+  if (lower.includes('water') || lower.includes('drink')) return 'W';
+  if (lower.includes('sleep') || lower.includes('bed')) return 'Z';
+  if (lower.includes('walk') || lower.includes('run')) return '>';
+  if (lower.includes('study') || lower.includes('sat') || lower.includes('learn')) return 'S';
+  if (lower.includes('code') || lower.includes('program')) return '#';
+  if (lower.includes('eat') || lower.includes('diet') || lower.includes('food')) return 'F';
+  if (lower.includes('journal') || lower.includes('write')) return 'J';
+  if (lower.includes('pray') || lower.includes('church')) return '+';
+  if (lower.includes('save') || lower.includes('money')) return '$';
+  return '*';
 }
 
 // ============================================
@@ -317,6 +340,7 @@ export default function MobileSettingsPage() {
     display_name, setDisplayName,
     default_tab, setDefaultTab,
     accent_color, setAccentColor,
+    react95_theme, setReact95Theme,
     font_size, setFontSize,
     coach_tone, setCoachTone,
     coach_context, setCoachContext,
@@ -469,7 +493,7 @@ export default function MobileSettingsPage() {
       <MobileContainer>
         <MainWindow style={{ marginBottom: 70 }}>
           <TitleBar>
-            <span>⚙️ Settings</span>
+            <span>Settings</span>
             <TitleBarButton size="sm" onClick={() => router.push('/mobile')}>
               ✕
             </TitleBarButton>
@@ -480,7 +504,7 @@ export default function MobileSettingsPage() {
 
               {/* ===== PROFILE ===== */}
               <CollapsibleHeader $collapsed={collapsed.profile} onClick={() => toggleSection('profile')}>
-                👤 Profile
+                Profile
               </CollapsibleHeader>
               <SectionContent $collapsed={collapsed.profile}>
                 <SettingsList>
@@ -504,7 +528,7 @@ export default function MobileSettingsPage() {
 
               {/* ===== APPEARANCE ===== */}
               <CollapsibleHeader $collapsed={collapsed.appearance} onClick={() => toggleSection('appearance')}>
-                🎨 Appearance
+                Appearance
               </CollapsibleHeader>
               <SectionContent $collapsed={collapsed.appearance}>
                 <SettingsList>
@@ -519,19 +543,29 @@ export default function MobileSettingsPage() {
                       ))}
                     </SmallSelect>
                   </SettingRow>
-                  <SettingRow>
-                    <SettingLabel>Accent Color</SettingLabel>
-                    <SettingValue>
-                      {ACCENT_COLORS.map(c => (
-                        <ColorSwatch
-                          key={c.value}
-                          $color={c.value}
-                          $active={accent_color === c.value}
-                          onClick={() => setAccentColor(c.value)}
-                          title={c.name}
-                        />
-                      ))}
-                    </SettingValue>
+                  <SettingRow style={{ flexDirection: 'column', alignItems: 'flex-start' }}>
+                    <SettingLabel style={{ marginBottom: 6 }}>Theme</SettingLabel>
+                    <div style={{
+                      display: 'grid',
+                      gridTemplateColumns: 'repeat(4, 1fr)',
+                      gap: 3,
+                      width: '100%',
+                    }}>
+                      {CURATED_THEMES.map(t => {
+                        const bg = getThemeByName(t.name).desktopBackground;
+                        return (
+                          <ThemeChip
+                            key={t.name}
+                            $active={react95_theme === t.name}
+                            $bgColor={bg}
+                            $light={isLightColor(bg)}
+                            onClick={() => setReact95Theme(t.name)}
+                          >
+                            {t.label}
+                          </ThemeChip>
+                        );
+                      })}
+                    </div>
                   </SettingRow>
                   <SettingRow>
                     <SettingLabel>Font Size</SettingLabel>
@@ -551,14 +585,14 @@ export default function MobileSettingsPage() {
                   <SettingRow>
                     <SettingLabel>Keyboard Size</SettingLabel>
                     <ToggleGroup>
-                      {(['compact', 'medium', 'large'] as KeyboardSize[]).map(size => (
+                      {(['compact', 'medium', 'large', 'xlarge'] as KeyboardSize[]).map(size => (
                         <ToggleButton
                           key={size}
                           $active={keyboard_size === size}
                           onClick={() => setKeyboardSize(size)}
-                          style={{ padding: '4px 8px', fontSize: 11 }}
+                          style={{ padding: '4px 6px', fontSize: 10 }}
                         >
-                          {size.charAt(0).toUpperCase() + size.slice(1)}
+                          {size === 'xlarge' ? 'XL' : size.charAt(0).toUpperCase() + size.slice(1)}
                         </ToggleButton>
                       ))}
                     </ToggleGroup>
@@ -568,7 +602,7 @@ export default function MobileSettingsPage() {
 
               {/* ===== COACH ===== */}
               <CollapsibleHeader $collapsed={collapsed.coach} onClick={() => toggleSection('coach')}>
-                🤖 Coach
+                Coach
               </CollapsibleHeader>
               <SectionContent $collapsed={collapsed.coach}>
                 <SettingsList>
@@ -630,13 +664,13 @@ export default function MobileSettingsPage() {
 
               {/* ===== HABITS ===== */}
               <CollapsibleHeader $collapsed={collapsed.habits} onClick={() => toggleSection('habits')}>
-                💪 Habits ({activeHabits.length})
+                Habits ({activeHabits.length})
               </CollapsibleHeader>
               <SectionContent $collapsed={collapsed.habits}>
                 <SettingsList>
                   {activeHabits.length === 0 ? (
                     <div style={{ padding: 20, textAlign: 'center' }}>
-                      <div style={{ fontSize: 32, marginBottom: 8 }}>📋</div>
+                      <div style={{ fontSize: 20, marginBottom: 8, fontFamily: 'monospace' }}>[-]</div>
                       <div style={{ fontSize: 12, color: '#808080' }}>No habits yet</div>
                     </div>
                   ) : (
@@ -644,7 +678,7 @@ export default function MobileSettingsPage() {
                       <SettingsItem key={habit.habit_id}>
                         <ItemContent>
                           <ItemIcon color={habitColors[index % habitColors.length]}>
-                            {getHabitEmoji(habit.name)}
+                            {getHabitIcon(habit.name)}
                           </ItemIcon>
                           <ItemText>{habit.name}</ItemText>
                         </ItemContent>
@@ -662,20 +696,20 @@ export default function MobileSettingsPage() {
 
               {/* ===== GOALS ===== */}
               <CollapsibleHeader $collapsed={collapsed.goals} onClick={() => toggleSection('goals')}>
-                🎯 Goals ({activeGoals.length})
+                Goals ({activeGoals.length})
               </CollapsibleHeader>
               <SectionContent $collapsed={collapsed.goals}>
                 <SettingsList>
                   {activeGoals.length === 0 ? (
                     <div style={{ padding: 20, textAlign: 'center' }}>
-                      <div style={{ fontSize: 32, marginBottom: 8 }}>🎯</div>
+                      <div style={{ fontSize: 20, marginBottom: 8, fontFamily: 'monospace' }}>G</div>
                       <div style={{ fontSize: 12, color: '#808080' }}>No goals yet</div>
                     </div>
                   ) : (
                     activeGoals.map((goal) => (
                       <SettingsItem key={goal.goal_id}>
                         <ItemContent>
-                          <ItemIcon color="#4ecdc4">🎯</ItemIcon>
+                          <ItemIcon color="#4ecdc4">G</ItemIcon>
                           <ItemText>{goal.title}</ItemText>
                         </ItemContent>
                         <DeleteButton onClick={() => handleDeleteGoal(goal.goal_id)}>
@@ -692,13 +726,13 @@ export default function MobileSettingsPage() {
 
               {/* ===== DATA MANAGEMENT ===== */}
               <CollapsibleHeader $collapsed={collapsed.data} onClick={() => toggleSection('data')}>
-                💾 Data Management
+                Data Management
               </CollapsibleHeader>
               <SectionContent $collapsed={collapsed.data}>
                 <SettingsList>
                   <SettingsItem>
                     <ItemContent>
-                      <ItemIcon color="#00b894">📤</ItemIcon>
+                      <ItemIcon color="#00b894">^</ItemIcon>
                       <ItemText>Export Data</ItemText>
                     </ItemContent>
                     <Button size="sm" onClick={handleExport}>
@@ -707,7 +741,7 @@ export default function MobileSettingsPage() {
                   </SettingsItem>
                   <SettingsItem>
                     <ItemContent>
-                      <ItemIcon color="#0984e3">📥</ItemIcon>
+                      <ItemIcon color="#0984e3">v</ItemIcon>
                       <ItemText>Import Data</ItemText>
                     </ItemContent>
                     <Button size="sm" onClick={handleImport}>
@@ -716,7 +750,7 @@ export default function MobileSettingsPage() {
                   </SettingsItem>
                   <SettingsItem>
                     <ItemContent>
-                      <ItemIcon color="#ff6b6b">🗑️</ItemIcon>
+                      <ItemIcon color="#ff6b6b">X</ItemIcon>
                       <ItemText>Clear All Data</ItemText>
                     </ItemContent>
                     <DangerButton size="sm" onClick={() => setShowClearConfirm(true)}>
@@ -727,7 +761,7 @@ export default function MobileSettingsPage() {
                 <SettingsList style={{ marginTop: 8 }}>
                   <SettingsItem onClick={() => router.push('/mobile/calendar')} style={{ cursor: 'pointer' }}>
                     <ItemContent>
-                      <ItemIcon color="#74b9ff">📅</ItemIcon>
+                      <ItemIcon color="#74b9ff">=</ItemIcon>
                       <ItemText>View Calendar</ItemText>
                     </ItemContent>
                     <span style={{ color: '#808080' }}>→</span>
@@ -737,7 +771,7 @@ export default function MobileSettingsPage() {
 
               {/* ===== ABOUT ===== */}
               <CollapsibleHeader $collapsed={collapsed.about} onClick={() => toggleSection('about')}>
-                ℹ️ About
+                About
               </CollapsibleHeader>
               <SectionContent $collapsed={collapsed.about}>
                 <AboutSection>
@@ -759,7 +793,7 @@ export default function MobileSettingsPage() {
                     fontSize: 10,
                     textAlign: 'center'
                   }}>
-                    Built with ❤️ by {display_name}
+                    Built by {display_name}
                   </div>
                 </AboutSection>
               </SectionContent>
@@ -781,7 +815,7 @@ export default function MobileSettingsPage() {
         <PopupOverlay onClick={() => setShowAddHabit(false)}>
           <PopupWindow onClick={(e: React.MouseEvent) => e.stopPropagation()}>
             <TitleBar>
-              <span>💪 Add New Habit</span>
+              <span>Add New Habit</span>
               <TitleBarButton size="sm" onClick={() => setShowAddHabit(false)}>✕</TitleBarButton>
             </TitleBar>
             <PopupContent>
@@ -817,7 +851,7 @@ export default function MobileSettingsPage() {
         <PopupOverlay onClick={() => setShowAddGoal(false)}>
           <PopupWindow onClick={(e: React.MouseEvent) => e.stopPropagation()}>
             <TitleBar>
-              <span>🎯 Add New Goal</span>
+              <span>Add New Goal</span>
               <TitleBarButton size="sm" onClick={() => setShowAddGoal(false)}>✕</TitleBarButton>
             </TitleBar>
             <PopupContent>
@@ -853,7 +887,7 @@ export default function MobileSettingsPage() {
         <PopupOverlay onClick={() => setShowClearConfirm(false)}>
           <PopupWindow onClick={(e: React.MouseEvent) => e.stopPropagation()}>
             <TitleBar>
-              <span>⚠️ Clear All Data</span>
+              <span>[!] Clear All Data</span>
               <TitleBarButton size="sm" onClick={() => setShowClearConfirm(false)}>✕</TitleBarButton>
             </TitleBar>
             <PopupContent>

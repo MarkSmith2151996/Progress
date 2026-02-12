@@ -529,6 +529,7 @@ export default function MobilePage() {
   const [difficultyWeekStart, setDifficultyWeekStart] = useState(() => getWeekStart(today));
 
   // To Do sub-tab state
+  const [showDailySummary, setShowDailySummary] = useState(false);
   const [todoSubTab, setTodoSubTab] = useState<'habits' | 'tasks'>('habits');
   const [taskViewDate, setTaskViewDate] = useState(today);
   const [showAddTodo, setShowAddTodo] = useState(false);
@@ -1558,19 +1559,67 @@ export default function MobilePage() {
     );
   };
 
+  const getDailySummary = () => {
+    const completedHabitsToday = todayCompletions.filter(c => c.completed).length;
+    const totalHabitsToday = activeHabits.length;
+
+    const todayTasks = tasks.filter(t => t.planned_date === today);
+    const completedTasksToday = todayTasks.filter(t => t.status === 'completed').length;
+
+    let aheadCount = 0, onTrackCount = 0, behindCount = 0;
+    for (const g of activeGoals) {
+      const progress = g.target_value > 0 ? ((g.current_value - g.starting_value) / (g.target_value - g.starting_value)) * 100 : 0;
+      const totalDays = Math.max(1, Math.ceil((new Date(g.deadline).getTime() - new Date(g.start_date).getTime()) / (1000 * 60 * 60 * 24)));
+      const elapsed = Math.ceil((Date.now() - new Date(g.start_date).getTime()) / (1000 * 60 * 60 * 24));
+      const expected = (elapsed / totalDays) * 100;
+      if (progress >= expected + 10) aheadCount++;
+      else if (progress >= expected - 10) onTrackCount++;
+      else behindCount++;
+    }
+
+    const sortedLogs = [...dailyLogs].sort((a, b) => b.date.localeCompare(a.date));
+    let streak = 0;
+    const d = new Date();
+    for (let i = 0; i < 365; i++) {
+      const dateStr = format(d, 'yyyy-MM-dd');
+      if (sortedLogs.some(l => l.date === dateStr)) {
+        streak++;
+        d.setDate(d.getDate() - 1);
+      } else {
+        break;
+      }
+    }
+
+    return {
+      habitsCompleted: completedHabitsToday,
+      habitsTotal: totalHabitsToday,
+      tasksCompleted: completedTasksToday,
+      tasksTotal: todayTasks.length,
+      goalsAhead: aheadCount,
+      goalsOnTrack: onTrackCount,
+      goalsBehind: behindCount,
+      loggingStreak: streak,
+    };
+  };
+
   const renderTodo = () => {
     return (
       <>
-        <div style={{ marginBottom: 8 }}>
+        <div style={{ display: 'flex', gap: 4, marginBottom: 8 }}>
           <Button
-            fullWidth
+            style={{ flex: 1, fontSize: 11, padding: '4px 8px' }}
             onClick={() => {
               setDifficultyWeekStart(getWeekStart(today));
               setShowDifficultyPopup(true);
             }}
-            style={{ fontSize: 11, padding: '4px 8px' }}
           >
             Assign Difficulty
+          </Button>
+          <Button
+            style={{ minWidth: 32, fontSize: 11, padding: '4px 6px' }}
+            onClick={() => setShowDailySummary(true)}
+          >
+            [i]
           </Button>
         </div>
 
@@ -2131,6 +2180,64 @@ export default function MobilePage() {
 
       {/* Difficulty Tier Popup */}
       {showDifficultyPopup && renderDifficultyPopup()}
+
+      {/* Daily Summary Popup */}
+      {showDailySummary && (() => {
+        const summary = getDailySummary();
+        return (
+          <PopupOverlay onClick={() => setShowDailySummary(false)}>
+            <PopupWindow onClick={(e) => e.stopPropagation()}>
+              <TitleBar>
+                <span>Daily Summary - {format(new Date(), 'MMM d')}</span>
+                <TitleBarButton size="sm" onClick={() => setShowDailySummary(false)}>
+                  &#10005;
+                </TitleBarButton>
+              </TitleBar>
+              <PopupContent>
+                <SectionHeader>Today</SectionHeader>
+                <ListContainer>
+                  <DashboardStat>
+                    <StatLabel>Habits</StatLabel>
+                    <StatValue>{summary.habitsCompleted}/{summary.habitsTotal}</StatValue>
+                  </DashboardStat>
+                  <DashboardStat>
+                    <StatLabel>Tasks</StatLabel>
+                    <StatValue>{summary.tasksCompleted}/{summary.tasksTotal}</StatValue>
+                  </DashboardStat>
+                </ListContainer>
+
+                <SectionHeader>Goals</SectionHeader>
+                <ListContainer>
+                  <DashboardStat>
+                    <StatLabel>Ahead</StatLabel>
+                    <StatValue $color="#008000">{summary.goalsAhead}</StatValue>
+                  </DashboardStat>
+                  <DashboardStat>
+                    <StatLabel>On Track</StatLabel>
+                    <StatValue $color="#808000">{summary.goalsOnTrack}</StatValue>
+                  </DashboardStat>
+                  <DashboardStat>
+                    <StatLabel>Behind</StatLabel>
+                    <StatValue $color="#ff0000">{summary.goalsBehind}</StatValue>
+                  </DashboardStat>
+                </ListContainer>
+
+                <SectionHeader>Streaks</SectionHeader>
+                <ListContainer>
+                  <DashboardStat>
+                    <StatLabel>Logging Streak</StatLabel>
+                    <StatValue>{summary.loggingStreak} days</StatValue>
+                  </DashboardStat>
+                </ListContainer>
+
+                <Button fullWidth onClick={() => setShowDailySummary(false)} style={{ marginTop: 8 }}>
+                  Close
+                </Button>
+              </PopupContent>
+            </PopupWindow>
+          </PopupOverlay>
+        );
+      })()}
 
       {/* Add To-Do Popup */}
       {showAddTodo && (

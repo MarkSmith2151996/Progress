@@ -268,7 +268,7 @@ export default function MobileCalendarPage() {
         {/* Main Window */}
         <MainWindow style={{ marginBottom: 70 }}>
           <TitleBar>
-            <span>📅 Calendar</span>
+            <span>Calendar</span>
             <TitleBarButton size="sm" onClick={() => router.push('/mobile')}>
               ✕
             </TitleBarButton>
@@ -336,7 +336,7 @@ export default function MobileCalendarPage() {
         <PopupOverlay onClick={() => setSelectedDay(null)}>
           <PopupWindow onClick={(e) => e.stopPropagation()}>
             <TitleBar>
-              <span>📅 {format(new Date(selectedDay), 'EEE, MMM d')}</span>
+              <span>{format(new Date(selectedDay), 'EEE, MMM d')}</span>
               <TitleBarButton size="sm" onClick={() => setSelectedDay(null)}>✕</TitleBarButton>
             </TitleBar>
             <PopupContent>
@@ -352,7 +352,7 @@ export default function MobileCalendarPage() {
                     border: '2px inset #808080'
                   }}>
                     <div style={{ textAlign: 'center' }}>
-                      <div style={{ fontSize: 18 }}>{'⚡'.repeat(Math.min(dayData.log.energy_level || 0, 5))}</div>
+                      <div style={{ fontSize: 18 }}>{dayData.log.energy_level || 0}/5</div>
                       <div style={{ fontSize: 9, color: '#808080' }}>Energy</div>
                     </div>
                     <div style={{ textAlign: 'center' }}>
@@ -360,7 +360,7 @@ export default function MobileCalendarPage() {
                       <div style={{ fontSize: 9, color: '#808080' }}>Sleep</div>
                     </div>
                     <div style={{ textAlign: 'center' }}>
-                      <div style={{ fontSize: 18 }}>{'⭐'.repeat(Math.min(dayData.log.overall_rating || 0, 5))}</div>
+                      <div style={{ fontSize: 18 }}>{dayData.log.overall_rating || 0}/5</div>
                       <div style={{ fontSize: 9, color: '#808080' }}>Rating</div>
                     </div>
                   </div>
@@ -448,7 +448,7 @@ export default function MobileCalendarPage() {
         <PopupOverlay onClick={() => { setShowQuickLog(false); setSelectedDay(null); }}>
           <PopupWindow onClick={(e) => e.stopPropagation()}>
             <TitleBar>
-              <span>📝 Note for {format(new Date(selectedDay), 'MMM d')}</span>
+              <span>Note for {format(new Date(selectedDay), 'MMM d')}</span>
               <TitleBarButton size="sm" onClick={() => { setShowQuickLog(false); setSelectedDay(null); }}>✕</TitleBarButton>
             </TitleBar>
             <PopupContent>
@@ -484,7 +484,7 @@ export default function MobileCalendarPage() {
         <PopupOverlay onClick={() => { setShowFullEditor(false); setSelectedDay(null); }}>
           <PopupWindow onClick={(e) => e.stopPropagation()}>
             <TitleBar>
-              <span>📊 Edit Log - {format(new Date(selectedDay), 'MMM d')}</span>
+              <span>Edit Log - {format(new Date(selectedDay), 'MMM d')}</span>
               <TitleBarButton size="sm" onClick={() => { setShowFullEditor(false); setSelectedDay(null); }}>✕</TitleBarButton>
             </TitleBar>
             <PopupContent>
@@ -538,7 +538,7 @@ export default function MobileCalendarPage() {
                       $active={editRating === level}
                       onClick={() => setEditRating(level)}
                     >
-                      {'⭐'.repeat(level)}
+                      {level}
                     </ToggleButton>
                   ))}
                 </ToggleGroup>

@@ -9,7 +9,7 @@ import StyledComponentsRegistry from '@/lib/registry';
 
 const LoginContainer = styled.div`
   min-height: 100vh;
-  background: #008080;
+  background: var(--accent-color, #008080);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -86,7 +86,7 @@ function LoginLoading() {
         <LoginContainer>
           <LoginWindow>
             <TitleBar>
-              <Icon>🔒</Icon>
+              <Icon>[=]</Icon>
               <span>Progress Tracker - Login</span>
             </TitleBar>
             <WindowContent>
@@ -148,7 +148,7 @@ function LoginContent() {
     <LoginContainer>
       <LoginWindow>
         <TitleBar>
-          <Icon>🔒</Icon>
+          <Icon>[=]</Icon>
           <span>Progress Tracker - Login</span>
         </TitleBar>
         <WindowContent>
