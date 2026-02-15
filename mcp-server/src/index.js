@@ -122,11 +122,29 @@ server.tool(
       db.fetchGoals(true),
     ]);
 
+    const habits = await db.fetchHabits(true);
+
     const completedTasks = tasks.filter((t) => t.status === 'completed');
     const taskRate = tasks.length > 0 ? completedTasks.length / tasks.length : 0;
 
-    const completedHabits = habitCompletions.filter((c) => c.completed).length;
-    const habitRate = habitCompletions.length > 0 ? completedHabits / habitCompletions.length : 0;
+    // Count scheduled habit slots vs completed
+    const dayLimit = isCurrentWeek ? todayStr : weStr;
+    let totalHabitSlots = 0;
+    let completedHabitSlots = 0;
+    for (let d = new Date(ws); format(d, 'yyyy-MM-dd') <= dayLimit; d.setDate(d.getDate() + 1)) {
+      const dateStr = format(d, 'yyyy-MM-dd');
+      const dayName = format(d, 'EEE').toLowerCase().slice(0, 3);
+      habits.forEach((h) => {
+        const daysActive = (h.days_active || []).map((x) => x.toLowerCase().slice(0, 3));
+        const isActive = daysActive.length === 0 || daysActive.includes(dayName);
+        if (isActive) {
+          totalHabitSlots++;
+          const completion = habitCompletions.find((c) => c.habit_id === h.habit_id && c.date === dateStr);
+          if (completion && completion.completed) completedHabitSlots++;
+        }
+      });
+    }
+    const habitRate = totalHabitSlots > 0 ? completedHabitSlots / totalHabitSlots : 0;
 
     const daysLogged = dailyLogs.length;
     const loggingRate = daysLogged / 7;
@@ -153,7 +171,7 @@ server.tool(
       is_current_week: isCurrentWeek,
       score, grade,
       tasks: { completed: completedTasks.length, total: tasks.length, rate: Math.round(taskRate * 100) },
-      habits: { completed: completedHabits, total: habitCompletions.length, rate: Math.round(habitRate * 100) },
+      habits: { completed: completedHabitSlots, total: totalHabitSlots, rate: Math.round(habitRate * 100) },
       logging: { days: daysLogged, rate: Math.round(loggingRate * 100) },
       goals: goalSnapshots,
       wins: weekWins,

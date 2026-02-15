@@ -8,6 +8,7 @@ import { useRouter } from 'next/navigation';
 import { useLogStore } from '@/stores/logStore';
 import { useGoalStore } from '@/stores/goalStore';
 import { Goal, Habit, HabitWithStatus, GoalType, GoalStatus, Task, TaskStatus, DifficultyTier } from '@/types';
+import { isHabitActiveOnDate } from '@/lib/metrics';
 import { useSettingsStore } from '@/stores/settingsStore';
 import {
   MobileContainer,
@@ -1109,11 +1110,26 @@ export default function MobilePage() {
     const completedTasks = weekTasks.filter((t) => t.status === 'completed');
     const taskRate = weekTasks.length > 0 ? completedTasks.length / weekTasks.length : 0;
 
-    // Habits in range
+    // Habits in range — count scheduled vs actually completed
+    const activeHabitsList = habits.filter((h) => h.active);
     const weekHabitCompletions = habitCompletions.filter((c) => c.date >= wsStr && c.date <= weStr);
-    const completedHabits = weekHabitCompletions.filter((c) => c.completed).length;
-    const totalHabitEntries = weekHabitCompletions.length;
-    const habitRate = totalHabitEntries > 0 ? completedHabits / totalHabitEntries : 0;
+    let totalHabitSlots = 0;
+    let completedHabitSlots = 0;
+    // For each day in the week, count how many habits were scheduled
+    const dayLimit = isCurrentWeek ? todayDate : weStr;
+    for (let d = new Date(ws); format(d, 'yyyy-MM-dd') <= dayLimit; d.setDate(d.getDate() + 1)) {
+      const dateStr = format(d, 'yyyy-MM-dd');
+      activeHabitsList.forEach((h) => {
+        if (isHabitActiveOnDate(h, dateStr)) {
+          totalHabitSlots++;
+          const completion = weekHabitCompletions.find((c) => c.habit_id === h.habit_id && c.date === dateStr);
+          if (completion?.completed) completedHabitSlots++;
+        }
+      });
+    }
+    const completedHabits = completedHabitSlots;
+    const totalHabitEntries = totalHabitSlots;
+    const habitRate = totalHabitSlots > 0 ? completedHabitSlots / totalHabitSlots : 0;
 
     // Days logged
     const weekLogs = dailyLogs.filter((l) => l.date >= wsStr && l.date <= weStr);
@@ -2204,38 +2220,38 @@ export default function MobilePage() {
               <PopupContent>
                 <SectionHeader>Today</SectionHeader>
                 <ListContainer>
-                  <DashboardStat>
+                  <ReportStatRow>
                     <StatLabel>Habits</StatLabel>
                     <StatValue>{summary.habitsCompleted}/{summary.habitsTotal}</StatValue>
-                  </DashboardStat>
-                  <DashboardStat>
+                  </ReportStatRow>
+                  <ReportStatRow>
                     <StatLabel>Tasks</StatLabel>
                     <StatValue>{summary.tasksCompleted}/{summary.tasksTotal}</StatValue>
-                  </DashboardStat>
+                  </ReportStatRow>
                 </ListContainer>
 
                 <SectionHeader>Goals</SectionHeader>
                 <ListContainer>
-                  <DashboardStat>
+                  <ReportStatRow>
                     <StatLabel>Ahead</StatLabel>
                     <StatValue $color="#008000">{summary.goalsAhead}</StatValue>
-                  </DashboardStat>
-                  <DashboardStat>
+                  </ReportStatRow>
+                  <ReportStatRow>
                     <StatLabel>On Track</StatLabel>
                     <StatValue $color="#808000">{summary.goalsOnTrack}</StatValue>
-                  </DashboardStat>
-                  <DashboardStat>
+                  </ReportStatRow>
+                  <ReportStatRow>
                     <StatLabel>Behind</StatLabel>
                     <StatValue $color="#ff0000">{summary.goalsBehind}</StatValue>
-                  </DashboardStat>
+                  </ReportStatRow>
                 </ListContainer>
 
                 <SectionHeader>Streaks</SectionHeader>
                 <ListContainer>
-                  <DashboardStat>
+                  <ReportStatRow>
                     <StatLabel>Logging Streak</StatLabel>
                     <StatValue>{summary.loggingStreak} days</StatValue>
-                  </DashboardStat>
+                  </ReportStatRow>
                 </ListContainer>
 
                 <Button fullWidth onClick={() => setShowDailySummary(false)} style={{ marginTop: 8 }}>
