@@ -471,29 +471,42 @@ server.prompt(
         role: 'user',
         content: {
           type: 'text',
-          text: `Check in on my goals and tell me how they're going. Here's how:
+          text: `Check in on my goals and tell me how they're going.
 
-1. Call \`evaluate_goals\` to pull my goal data, tasks, accomplishments, and habits.
+IMPORTANT: The current progress numbers in the app might be wrong or arbitrary — do NOT just read them back to me. Your job is to CALCULATE what the real progress is by analyzing the actual evidence.
 
-2. Go through each goal and figure out what the progress SHOULD be based on the evidence — completed tasks linked to the goal, accomplishments that match the goal's keywords, and anything else relevant. Use your judgment:
-   - For count goals: each completed task or matching accomplishment is roughly +1 (don't double-count the same thing)
-   - For value goals: look for actual numbers in accomplishments ("saved $50" = +50)
-   - For time goals: look for durations ("practiced 30 min" = +30)
-   - Use the goal title for context — think about what would actually count as progress
-   - Be conservative, only count clear evidence
-   - Never exceed the target value
+Here's how to evaluate each goal:
 
-3. Present your findings naturally — for each goal, tell me:
-   - What it's currently set to
-   - What you think it should be and WHY (what evidence you found)
-   - Whether I'm ahead or behind based on time remaining
-   - Flag anything that looks off or needs my input
+1. Call \`evaluate_goals\` to pull everything — goals, tasks, accomplishments, habits.
 
-4. WAIT FOR MY CONFIRMATION before updating anything. Show me all your proposed changes and ask if they look right. I might have context you don't — maybe I forgot to log something, or maybe something shouldn't count.
+2. For EACH goal, determine real progress from scratch:
+   - Read the goal title carefully. What does "done" actually look like for this goal?
+   - Look at ALL completed tasks linked to this goal — what do they represent?
+   - Look at ALL accomplishments that match the goal's keywords or relate to its title
+   - Look at habit completion patterns if relevant
+   - Think about the goal holistically: has meaningful progress been made? How much of the total work is done?
+   - Estimate a COMPLETION PERCENTAGE (0-100%) based purely on the evidence you see
+   - Calculate new current_value = starting_value + (percentage / 100) * (target_value - starting_value)
+   - Round to a sensible number
 
-5. Only after I confirm, call \`update_goal_progress\` for each goal I approved.
+   Examples of reasoning:
+   - Goal "Build trading bot" (0/8): You see 3 completed tasks about building components and 2 accomplishments about testing. That's maybe 40% of the way there → set to 3/8.
+   - Goal "Read 5 books" (0/5): You see accomplishments mentioning finishing 2 specific books → set to 2/5.
+   - Goal "Save $1000" ($0/$1000): You see accomplishments mentioning "$200 saved" and "$150 deposit" → set to $350/$1000.
+   - Goal "Complete website" (0/8): You see nothing related in tasks or accomplishments → stays at 0/8, flag it.
 
-Keep it conversational — talk to me like a friend checking in, not a robot reading a report.`,
+3. Present your analysis naturally — for each goal tell me:
+   - What evidence you found (specific tasks/accomplishments)
+   - What % complete you think it is and why
+   - Your proposed new value (e.g., "I'd set this to 5/8")
+   - Whether you're on pace, ahead, or behind based on deadline
+   - If you found NO evidence, say so — ask me if I've been working on it outside the app
+
+4. Show all proposed changes together, then ASK ME before updating anything. I might say "actually I also did X that I didn't log" or "no that task doesn't count toward that goal."
+
+5. Only after I say go ahead, call \`update_goal_progress\` for each approved change.
+
+Be conversational. You're a friend helping me take stock, not generating a spreadsheet.`,
         },
       }],
     };
