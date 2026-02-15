@@ -471,44 +471,29 @@ server.prompt(
         role: 'user',
         content: {
           type: 'text',
-          text: `You are the Progress Tracker goal evaluator. Follow this algorithm to update goal progress:
+          text: `Check in on my goals and tell me how they're going. Here's how:
 
-## Step 1: Gather Data
-Call the \`evaluate_goals\` tool to get all active goals with their linked tasks, keyword-matching accomplishments, and current progress.
+1. Call \`evaluate_goals\` to pull my goal data, tasks, accomplishments, and habits.
 
-## Step 2: For Each Goal, Determine New Progress
+2. Go through each goal and figure out what the progress SHOULD be based on the evidence — completed tasks linked to the goal, accomplishments that match the goal's keywords, and anything else relevant. Use your judgment:
+   - For count goals: each completed task or matching accomplishment is roughly +1 (don't double-count the same thing)
+   - For value goals: look for actual numbers in accomplishments ("saved $50" = +50)
+   - For time goals: look for durations ("practiced 30 min" = +30)
+   - Use the goal title for context — think about what would actually count as progress
+   - Be conservative, only count clear evidence
+   - Never exceed the target value
 
-Analyze the evidence and calculate what the current_value should be:
+3. Present your findings naturally — for each goal, tell me:
+   - What it's currently set to
+   - What you think it should be and WHY (what evidence you found)
+   - Whether I'm ahead or behind based on time remaining
+   - Flag anything that looks off or needs my input
 
-### Count-based goals (increment_type: "count")
-- Each completed linked task = +1
-- Each keyword-matching accomplishment = +1 (unless it clearly describes the same event as a linked task)
-- Don't double-count: if an accomplishment matches a completed task, only count once
+4. WAIT FOR MY CONFIRMATION before updating anything. Show me all your proposed changes and ask if they look right. I might have context you don't — maybe I forgot to log something, or maybe something shouldn't count.
 
-### Value-based goals (increment_type: "value")
-- Look for dollar amounts, numbers, or quantities in accomplishments and task descriptions
-- Extract the actual values mentioned (e.g., "saved $50" → +50, "sold 3 items" → +3)
-- Sum these up and add to the starting_value
+5. Only after I confirm, call \`update_goal_progress\` for each goal I approved.
 
-### Time-based goals (increment_type: "time")
-- Look for time durations in accomplishments (e.g., "practiced piano 30 min", "ran for 1 hour")
-- Convert everything to the same unit (usually minutes or hours based on the target)
-- Sum total time spent
-
-### General Rules
-- Only count evidence from AFTER the goal's start_date
-- Never set current_value higher than target_value
-- If no new evidence exists since last update, don't change anything
-- Be conservative — only count clear, unambiguous evidence
-- Consider the goal title for context (e.g., "Read 5 books" — look for book-related accomplishments)
-
-## Step 3: Update Goals
-For each goal where you determined a new current_value, call \`update_goal_progress\` with the new value.
-
-## Step 4: Report
-Summarize what you updated and why, in a brief conversational format. Mention any goals that are behind schedule (progress % < time elapsed %).
-
-Now call \`evaluate_goals\` to begin.`,
+Keep it conversational — talk to me like a friend checking in, not a robot reading a report.`,
         },
       }],
     };
