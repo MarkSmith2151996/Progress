@@ -352,6 +352,170 @@ server.tool(
 );
 
 // ============================================
+// GOAL EVALUATION TOOL
+// ============================================
+
+server.tool(
+  'evaluate_goals',
+  'Gather all data needed to evaluate goal progress: goals with linked tasks, matching accomplishments, and habit data. Use this before calling update_goal_progress. Returns everything Claude needs to reason about how much progress has been made.',
+  {
+    lookback_days: z.number().optional().describe('How many days of data to analyze. Defaults to 14.'),
+  },
+  async ({ lookback_days }) => {
+    const days = lookback_days || 14;
+    const endDate = getToday();
+    const startDate = format(subDays(new Date(), days), 'yyyy-MM-dd');
+
+    const [goals, tasks, dailyLogs, habits, habitCompletions] = await Promise.all([
+      db.fetchGoals(true),
+      db.fetchTasks(startDate, endDate),
+      db.fetchDailyLogs(startDate, endDate),
+      db.fetchHabits(true),
+      db.fetchHabitCompletions(startDate, endDate),
+    ]);
+
+    // Collect all accomplishments from the period
+    const accomplishments = [];
+    dailyLogs.forEach((log) => {
+      if (log.accomplishments) {
+        log.accomplishments.forEach((acc) => {
+          accomplishments.push({ text: acc, date: log.date });
+        });
+      }
+    });
+
+    // Build per-goal evidence bundles
+    const goalEvaluations = goals.map((goal) => {
+      const range = goal.target_value - goal.starting_value;
+      const currentProgress = range > 0
+        ? Math.round(((goal.current_value - goal.starting_value) / range) * 100)
+        : 0;
+      const daysLeft = Math.max(0, Math.ceil((new Date(goal.deadline).getTime() - Date.now()) / (1000 * 60 * 60 * 24)));
+      const totalDays = Math.max(1, Math.ceil((new Date(goal.deadline).getTime() - new Date(goal.start_date).getTime()) / (1000 * 60 * 60 * 24)));
+      const timeElapsedPct = Math.round(((totalDays - daysLeft) / totalDays) * 100);
+
+      // Tasks directly linked to this goal
+      const linkedTasks = tasks.filter((t) => t.goal_id === goal.goal_id);
+      const completedLinkedTasks = linkedTasks.filter((t) => t.status === 'completed');
+
+      // Accomplishments matching keywords
+      const keywords = (goal.keywords || []).map((k) => k.toLowerCase());
+      const matchingAccomplishments = keywords.length > 0
+        ? accomplishments.filter((acc) => {
+            const lower = acc.text.toLowerCase();
+            return keywords.some((kw) => lower.includes(kw));
+          })
+        : [];
+
+      return {
+        goal_id: goal.goal_id,
+        title: goal.title,
+        type: goal.type,
+        increment_type: goal.increment_type || 'count',
+        keywords: goal.keywords || [],
+        current_value: goal.current_value,
+        target_value: goal.target_value,
+        starting_value: goal.starting_value,
+        current_progress_pct: Math.min(100, currentProgress),
+        deadline: goal.deadline,
+        days_remaining: daysLeft,
+        time_elapsed_pct: Math.min(100, timeElapsedPct),
+        evidence: {
+          linked_tasks_completed: completedLinkedTasks.map((t) => ({
+            description: t.description,
+            date: t.completed_date || t.planned_date,
+          })),
+          linked_tasks_pending: linkedTasks.filter((t) => t.status !== 'completed').map((t) => ({
+            description: t.description,
+            planned_date: t.planned_date,
+          })),
+          keyword_matching_accomplishments: matchingAccomplishments,
+          total_linked_tasks: linkedTasks.length,
+          completed_linked_tasks: completedLinkedTasks.length,
+        },
+      };
+    });
+
+    // Summary stats for context
+    const summary = {
+      period: `${startDate} to ${endDate}`,
+      total_tasks_completed: tasks.filter((t) => t.status === 'completed').length,
+      total_tasks: tasks.length,
+      total_accomplishments: accomplishments.length,
+      days_logged: dailyLogs.length,
+      habit_completion_rate: habitCompletions.length > 0
+        ? Math.round((habitCompletions.filter((c) => c.completed).length / habitCompletions.length) * 100)
+        : 0,
+    };
+
+    return {
+      content: [{
+        type: 'text',
+        text: JSON.stringify({ summary, goals: goalEvaluations }, null, 2),
+      }],
+    };
+  }
+);
+
+// ============================================
+// MCP PROMPT: Goal Progress Algorithm
+// ============================================
+
+server.prompt(
+  'update_goals',
+  'Evaluate and update progress for all active goals using data from the Progress Tracker.',
+  {},
+  async () => {
+    return {
+      messages: [{
+        role: 'user',
+        content: {
+          type: 'text',
+          text: `You are the Progress Tracker goal evaluator. Follow this algorithm to update goal progress:
+
+## Step 1: Gather Data
+Call the \`evaluate_goals\` tool to get all active goals with their linked tasks, keyword-matching accomplishments, and current progress.
+
+## Step 2: For Each Goal, Determine New Progress
+
+Analyze the evidence and calculate what the current_value should be:
+
+### Count-based goals (increment_type: "count")
+- Each completed linked task = +1
+- Each keyword-matching accomplishment = +1 (unless it clearly describes the same event as a linked task)
+- Don't double-count: if an accomplishment matches a completed task, only count once
+
+### Value-based goals (increment_type: "value")
+- Look for dollar amounts, numbers, or quantities in accomplishments and task descriptions
+- Extract the actual values mentioned (e.g., "saved $50" → +50, "sold 3 items" → +3)
+- Sum these up and add to the starting_value
+
+### Time-based goals (increment_type: "time")
+- Look for time durations in accomplishments (e.g., "practiced piano 30 min", "ran for 1 hour")
+- Convert everything to the same unit (usually minutes or hours based on the target)
+- Sum total time spent
+
+### General Rules
+- Only count evidence from AFTER the goal's start_date
+- Never set current_value higher than target_value
+- If no new evidence exists since last update, don't change anything
+- Be conservative — only count clear, unambiguous evidence
+- Consider the goal title for context (e.g., "Read 5 books" — look for book-related accomplishments)
+
+## Step 3: Update Goals
+For each goal where you determined a new current_value, call \`update_goal_progress\` with the new value.
+
+## Step 4: Report
+Summarize what you updated and why, in a brief conversational format. Mention any goals that are behind schedule (progress % < time elapsed %).
+
+Now call \`evaluate_goals\` to begin.`,
+        },
+      }],
+    };
+  }
+);
+
+// ============================================
 // START SERVER
 // ============================================
 
