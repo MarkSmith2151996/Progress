@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 import { DailyLog, DifficultyTier, Task, Habit, HabitCompletion, HabitWithStatus, Goal } from '@/types';
-import { enrichHabitWithStatus, isHabitActiveToday, getToday } from '@/lib/metrics';
+import { enrichHabitWithStatus, isHabitActiveToday, isHabitActiveOnDate, getToday } from '@/lib/metrics';
 import * as browserStorage from '@/lib/browserStorage';
 import * as supabase from '@/lib/supabase';
 import { processAccomplishment, GoalUpdateResult, formatUpdateMessage } from '@/lib/goalUpdater';
@@ -407,7 +407,7 @@ export const useLogStore = create<LogState>((set, get) => ({
   getHabitsByDate: (date) => {
     const { habits, habitCompletions } = get();
     return habits
-      .filter((h) => h.active)
+      .filter((h) => h.active && isHabitActiveOnDate(h, date))
       .map((h) => enrichHabitWithStatus(h, habitCompletions, date));
   },
 

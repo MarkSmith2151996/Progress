@@ -1,0 +1,16 @@
+{
+  "name": "progress-mcp-server",
+  "version": "1.0.0",
+  "description": "MCP server for Progress Tracker - read/write all data via Claude Code",
+  "main": "src/index.js",
+  "scripts": {
+    "start": "node src/index.js"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.0.0",
+    "@supabase/supabase-js": "^2.39.0",
+    "date-fns": "^3.0.0",
+    "dotenv": "^16.3.0",
+    "zod": "^3.22.0"
+  }
+}

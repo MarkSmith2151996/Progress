@@ -3,12 +3,11 @@
 import { useState, useEffect } from 'react';
 import styled from 'styled-components';
 import { Button, ProgressBar } from 'react95';
-import { format } from 'date-fns';
+import { format, startOfWeek, endOfWeek, subWeeks, addWeeks } from 'date-fns';
 import { useRouter } from 'next/navigation';
 import { useLogStore } from '@/stores/logStore';
 import { useGoalStore } from '@/stores/goalStore';
 import { Goal, Habit, HabitWithStatus, GoalType, GoalStatus, Task, TaskStatus, DifficultyTier } from '@/types';
-import { useCoachStore } from '@/stores/coachStore';
 import { useSettingsStore } from '@/stores/settingsStore';
 import {
   MobileContainer,
@@ -210,143 +209,56 @@ const TABS = {
   TODO: 1,
   MONTHLY: 2,
   SUMMARY: 3,
-  COACH: 4,
+  REPORT: 4,
 };
 
 // ============================================
-// COACH STYLED COMPONENTS
+// REPORT CARD STYLED COMPONENTS
 // ============================================
 
-const CoachContainer = styled.div`
-  display: flex;
-  flex-direction: column;
-  height: 100%;
-  min-height: 0;
-`;
-
-const CoachMessages = styled.div`
-  flex: 1;
-  overflow-y: auto;
-  padding: 8px;
-  background: #fff;
-  border: 2px solid;
-  border-color: #808080 #dfdfdf #dfdfdf #808080;
-  box-shadow: inset 1px 1px 0 #0a0a0a;
-  margin: 4px 0;
-`;
-
-const CoachBubble = styled.div<{ $role: 'user' | 'assistant' }>`
-  max-width: 85%;
-  padding: 8px 10px;
-  margin-bottom: 8px;
-  font-size: 12px;
-  line-height: 1.4;
-  background: ${props => props.$role === 'user' ? '#000080' : '#c0c0c0'};
-  color: ${props => props.$role === 'user' ? '#fff' : '#000'};
-  border: 2px solid;
-  border-color: ${props => props.$role === 'user'
-    ? '#4040c0 #000040 #000040 #4040c0'
-    : '#dfdfdf #808080 #808080 #dfdfdf'};
-  margin-left: ${props => props.$role === 'user' ? 'auto' : '0'};
-  margin-right: ${props => props.$role === 'user' ? '0' : 'auto'};
-  word-wrap: break-word;
-`;
-
-const CoachTimestamp = styled.div`
-  font-size: 9px;
-  color: #808080;
-  margin-top: 2px;
-`;
-
-const CoachStatus = styled.div<{ $online: boolean }>`
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  font-size: 10px;
-  padding: 4px 8px;
-  background: ${props => props.$online ? '#90EE90' : '#FFD700'};
-  border-bottom: 1px solid #808080;
-  font-weight: bold;
-`;
-
-const StatusDot = styled.span<{ $online: boolean }>`
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-  background: ${props => props.$online ? '#008000' : '#808080'};
-`;
-
-const TypingIndicator = styled.div`
-  padding: 8px 10px;
-  font-size: 12px;
-  color: #808080;
-  font-style: italic;
-  background: #c0c0c0;
-  border: 2px solid;
-  border-color: #dfdfdf #808080 #808080 #dfdfdf;
-  max-width: 120px;
-  margin-bottom: 8px;
-  animation: pulse 1.5s ease-in-out infinite;
-
-  @keyframes pulse {
-    0%, 100% { opacity: 1; }
-    50% { opacity: 0.5; }
-  }
-`;
-
-const CoachInputRow = styled.div`
-  display: flex;
-  gap: 4px;
-  padding: 4px 0;
-`;
-
-const CoachInput = styled.input`
-  flex: 1;
-  padding: 6px 8px;
-  font-size: 13px;
-  border: 2px solid;
-  border-color: #808080 #dfdfdf #dfdfdf #808080;
-  box-shadow: inset 1px 1px 0 #0a0a0a;
-  background: #fff;
-  font-family: inherit;
-
-  &:focus {
-    outline: none;
-  }
-
-  &::placeholder {
-    color: #808080;
-  }
-`;
-
-const DigestCard = styled.div`
+const ReportCard = styled.div`
+  margin-bottom: 12px;
   padding: 12px;
   background: #fff;
   border: 2px solid;
   border-color: #808080 #dfdfdf #dfdfdf #808080;
   box-shadow: inset 1px 1px 0 #0a0a0a;
-  margin: 4px 0;
 `;
 
-const DigestDate = styled.div`
-  font-size: 11px;
-  color: #808080;
-  margin-bottom: 8px;
+const ReportScoreContainer = styled.div`
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 16px;
+  padding: 16px 0;
+`;
+
+const ReportScore = styled.div<{ $color: string }>`
+  font-size: 48px;
   font-weight: bold;
+  color: ${props => props.$color};
+  line-height: 1;
 `;
 
-const DigestContent = styled.div`
-  font-size: 12px;
-  line-height: 1.5;
-  color: #000;
-  white-space: pre-wrap;
+const ReportGrade = styled.div<{ $color: string }>`
+  font-size: 36px;
+  font-weight: bold;
+  color: ${props => props.$color};
+  background: #c0c0c0;
+  border: 2px solid;
+  border-color: #dfdfdf #808080 #808080 #dfdfdf;
+  width: 48px;
+  height: 48px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
 `;
 
-const DashboardStat = styled.div`
+const ReportStatRow = styled.div`
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: 10px 8px;
+  padding: 8px;
   border-bottom: 1px solid #c0c0c0;
   background: #fff;
 
@@ -364,6 +276,59 @@ const StatValue = styled.span<{ $color?: string }>`
   font-size: 14px;
   font-weight: bold;
   color: ${props => props.$color || '#000080'};
+`;
+
+const ReportWeekLabel = styled.div`
+  font-size: 11px;
+  color: #808080;
+  text-align: center;
+  margin-top: 4px;
+`;
+
+const GoalProgressRow = styled.div`
+  padding: 8px;
+  border-bottom: 1px solid #c0c0c0;
+  background: #fff;
+
+  &:last-child {
+    border-bottom: none;
+  }
+`;
+
+const GoalProgressLabel = styled.div`
+  font-size: 12px;
+  color: #000;
+  margin-bottom: 4px;
+  display: flex;
+  justify-content: space-between;
+`;
+
+const GoalProgressBarBg = styled.div`
+  width: 100%;
+  height: 12px;
+  background: #c0c0c0;
+  border: 1px solid;
+  border-color: #808080 #dfdfdf #dfdfdf #808080;
+`;
+
+const GoalProgressBarFill = styled.div<{ $width: number; $color: string }>`
+  height: 100%;
+  width: ${props => props.$width}%;
+  background: ${props => props.$color};
+`;
+
+const WinItem = styled.div`
+  padding: 6px 8px;
+  border-bottom: 1px solid #c0c0c0;
+  font-size: 12px;
+  color: #000;
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+
+  &:last-child {
+    border-bottom: none;
+  }
 `;
 
 // ============================================
@@ -507,22 +472,12 @@ export default function MobilePage() {
   const [newHabitActive, setNewHabitActive] = useState(true);
   const [saving, setSaving] = useState(false);
 
-  // Coach state
-  const [coachSubTab, setCoachSubTab] = useState<'chat' | 'digest' | 'dashboard'>('chat');
-  const [coachInput, setCoachInput] = useState('');
-
-  const {
-    chatHistory,
-    isLoadingChat,
-    coachOnline,
-    latestDigest,
-    digestHistory,
-    sendMessage: sendCoachMsg,
-    initSession,
-    fetchDigest,
-    fetchDigestHistory,
-    cleanup: cleanupCoach,
-  } = useCoachStore();
+  // Report state
+  const [reportWeekStart, setReportWeekStart] = useState(() => {
+    const now = new Date();
+    const ws = startOfWeek(now, { weekStartsOn: 1 });
+    return format(ws, 'yyyy-MM-dd');
+  });
 
   // Difficulty tier state
   const [showDifficultyPopup, setShowDifficultyPopup] = useState(false);
@@ -532,6 +487,7 @@ export default function MobilePage() {
   const [showDailySummary, setShowDailySummary] = useState(false);
   const [todoSubTab, setTodoSubTab] = useState<'habits' | 'tasks'>('habits');
   const [taskViewDate, setTaskViewDate] = useState(today);
+  const [habitViewDate, setHabitViewDate] = useState(today);
   const [showAddTodo, setShowAddTodo] = useState(false);
   const [addTodoType, setAddTodoType] = useState<'habit' | 'task'>('task');
   const [showEditTask, setShowEditTask] = useState(false);
@@ -557,6 +513,7 @@ export default function MobilePage() {
     toggleTask,
     addHabit,
     getTodayHabits,
+    getHabitsByDate,
     getDifficultyTier,
     setDifficultyTier,
     syncStatus: logSyncStatus,
@@ -608,13 +565,9 @@ export default function MobilePage() {
     fetchData();
     fetchGoals();
     subscribeToRealtime();
-    initSession();
-    fetchDigest();
-    fetchDigestHistory();
 
     return () => {
       unsubscribeFromRealtime();
-      cleanupCoach();
     };
   }, []);
 
@@ -655,12 +608,14 @@ export default function MobilePage() {
   });
   allAccomplishments.sort((a, b) => b.date.localeCompare(a.date));
 
+  const habitDateCompletions = habitCompletions.filter((c) => c.date === habitViewDate);
+
   const isHabitCompleted = (habitId: string) => {
-    return todayCompletions.some((c) => c.habit_id === habitId && c.completed);
+    return habitDateCompletions.some((c) => c.habit_id === habitId && c.completed);
   };
 
   const handleToggleHabit = async (habitId: string) => {
-    await toggleHabit(habitId, today);
+    await toggleHabit(habitId, habitViewDate);
   };
 
   const getGoalProgress = (goal: Goal) => {
@@ -982,6 +937,22 @@ export default function MobilePage() {
     setTaskViewDate(today);
   };
 
+  const handleHabitDatePrev = () => {
+    const d = new Date(habitViewDate + 'T00:00:00');
+    d.setDate(d.getDate() - 1);
+    setHabitViewDate(format(d, 'yyyy-MM-dd'));
+  };
+
+  const handleHabitDateNext = () => {
+    const d = new Date(habitViewDate + 'T00:00:00');
+    d.setDate(d.getDate() + 1);
+    setHabitViewDate(format(d, 'yyyy-MM-dd'));
+  };
+
+  const handleHabitDateToday = () => {
+    setHabitViewDate(today);
+  };
+
   // Open edit popup for a habit
   const handleEditHabit = (habit: Habit, e: React.MouseEvent) => {
     e.stopPropagation();
@@ -1113,8 +1084,8 @@ export default function MobilePage() {
         return 'To Do';
       case TABS.MONTHLY:
         return 'Monthly Goals';
-      case TABS.COACH:
-        return 'Coach';
+      case TABS.REPORT:
+        return 'Report Card';
       case TABS.SUMMARY:
       default:
         return 'Goal Summary';
@@ -1122,180 +1093,191 @@ export default function MobilePage() {
   };
 
   // ============================================
-  // COACH TAB RENDERING
+  // REPORT CARD TAB
   // ============================================
 
-  const handleSendCoachMessage = () => {
-    const msg = coachInput.trim();
-    if (!msg) return;
-    sendCoachMsg(msg);
-    setCoachInput('');
+  const computeWeeklyReport = (weekStartStr: string) => {
+    const ws = new Date(weekStartStr + 'T00:00:00');
+    const we = endOfWeek(ws, { weekStartsOn: 1 });
+    const wsStr = format(ws, 'yyyy-MM-dd');
+    const weStr = format(we, 'yyyy-MM-dd');
+    const todayDate = format(new Date(), 'yyyy-MM-dd');
+    const isCurrentWeek = wsStr <= todayDate && weStr >= todayDate;
+
+    // Tasks in range
+    const weekTasks = tasks.filter((t) => t.planned_date >= wsStr && t.planned_date <= weStr);
+    const completedTasks = weekTasks.filter((t) => t.status === 'completed');
+    const taskRate = weekTasks.length > 0 ? completedTasks.length / weekTasks.length : 0;
+
+    // Habits in range
+    const weekHabitCompletions = habitCompletions.filter((c) => c.date >= wsStr && c.date <= weStr);
+    const completedHabits = weekHabitCompletions.filter((c) => c.completed).length;
+    const totalHabitEntries = weekHabitCompletions.length;
+    const habitRate = totalHabitEntries > 0 ? completedHabits / totalHabitEntries : 0;
+
+    // Days logged
+    const weekLogs = dailyLogs.filter((l) => l.date >= wsStr && l.date <= weStr);
+    const daysLogged = weekLogs.length;
+    const loggingRate = daysLogged / 7;
+
+    // Goal progress (current snapshot)
+    const goalSnapshots = activeGoals.map((goal) => {
+      const range = goal.target_value - goal.starting_value;
+      const progress = range > 0 ? Math.round(((goal.current_value - goal.starting_value) / range) * 100) : 0;
+      return { title: goal.title, progress: Math.min(100, progress) };
+    });
+    const avgGoalProgress = goalSnapshots.length > 0
+      ? goalSnapshots.reduce((sum, g) => sum + g.progress, 0) / goalSnapshots.length / 100
+      : 0;
+
+    // Wins from daily logs in range
+    const weekWins: string[] = [];
+    weekLogs.forEach((log) => {
+      if (log.accomplishments) {
+        log.accomplishments.forEach((acc) => weekWins.push(acc));
+      }
+    });
+
+    // Overall score: 30% tasks + 30% habits + 20% logging + 20% goals
+    const score = Math.round(
+      (taskRate * 0.3 + habitRate * 0.3 + loggingRate * 0.2 + avgGoalProgress * 0.2) * 100
+    );
+
+    // Letter grade
+    const grade = score >= 90 ? 'A' : score >= 80 ? 'B' : score >= 70 ? 'C' : score >= 60 ? 'D' : 'F';
+    const gradeColor = score >= 80 ? '#008000' : score >= 50 ? '#808000' : '#ff0000';
+
+    return {
+      wsStr, weStr, isCurrentWeek,
+      taskRate, completedTasks: completedTasks.length, totalTasks: weekTasks.length,
+      habitRate, completedHabits, totalHabitEntries,
+      daysLogged, loggingRate,
+      goalSnapshots, avgGoalProgress,
+      weekWins,
+      score, grade, gradeColor,
+    };
   };
 
-  const renderCoachChat = () => (
-    <CoachContainer>
-      <CoachStatus $online={coachOnline}>
-        <StatusDot $online={coachOnline} />
-        Coach: {coachOnline ? 'Online' : 'Offline'}
-      </CoachStatus>
-      <CoachMessages>
-        {chatHistory.length === 0 && (
-          <EmptyState style={{ minHeight: 120, padding: '20px 16px' }}>
-            <EmptyStateTitle>Chat with your Coach</EmptyStateTitle>
-            <EmptyStateText>
-              Send a message to get personalized insights about your progress.
-            </EmptyStateText>
-          </EmptyState>
-        )}
-        {chatHistory.map((msg) => (
-          <CoachBubble key={msg.id} $role={msg.role}>
-            {msg.content}
-            <CoachTimestamp>
-              {format(new Date(msg.timestamp), 'h:mm a')}
-            </CoachTimestamp>
-          </CoachBubble>
-        ))}
-        {isLoadingChat && (
-          <TypingIndicator>Thinking...</TypingIndicator>
-        )}
-      </CoachMessages>
-      <CoachInputRow>
-        <CoachInput
-          value={coachInput}
-          onChange={(e) => setCoachInput(e.target.value)}
-          inputMode="none"
-          placeholder="Ask your coach..."
-          onKeyDown={(e) => {
-            if (e.key === 'Enter') handleSendCoachMessage();
-          }}
-        />
-        <Button onClick={handleSendCoachMessage} disabled={isLoadingChat || !coachInput.trim()}>
-          Send
-        </Button>
-      </CoachInputRow>
-    </CoachContainer>
-  );
+  const handleReportWeekPrev = () => {
+    const ws = new Date(reportWeekStart + 'T00:00:00');
+    const prev = subWeeks(ws, 1);
+    setReportWeekStart(format(prev, 'yyyy-MM-dd'));
+  };
 
-  const renderCoachDigest = () => (
-    <>
-      {latestDigest ? (
-        <DigestCard>
-          <DigestDate>
-            {format(new Date(latestDigest.digest_date), 'EEEE, MMM d')} - Daily Digest
-          </DigestDate>
-          <DigestContent>{latestDigest.content}</DigestContent>
-        </DigestCard>
-      ) : (
-        <EmptyState>
-          <EmptyStateTitle>No Digest Yet</EmptyStateTitle>
-          <EmptyStateText>
-            The coach server generates a daily digest each morning. Make sure the server is running on your PC.
-          </EmptyStateText>
-        </EmptyState>
-      )}
-      {digestHistory.length > 1 && (
-        <>
-          <SectionHeader>Previous Digests</SectionHeader>
-          {digestHistory.slice(1).map((d) => (
-            <DigestCard key={d.id}>
-              <DigestDate>{format(new Date(d.digest_date), 'EEE, MMM d')}</DigestDate>
-              <DigestContent>{d.content}</DigestContent>
-            </DigestCard>
-          ))}
-        </>
-      )}
-    </>
-  );
+  const handleReportWeekNext = () => {
+    const ws = new Date(reportWeekStart + 'T00:00:00');
+    const next = addWeeks(ws, 1);
+    setReportWeekStart(format(next, 'yyyy-MM-dd'));
+  };
 
-  const renderCoachDashboard = () => {
-    const completedHabitsToday = todayCompletions.filter((c) => c.completed).length;
-    const totalHabitsToday = activeHabits.length;
-    const habitRate = totalHabitsToday > 0 ? Math.round((completedHabitsToday / totalHabitsToday) * 100) : 0;
-    const weekTasks = tasks.filter((t) => {
-      const d = new Date(t.planned_date);
-      const now = new Date();
-      const weekAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
-      return d >= weekAgo && d <= now;
-    });
-    const weekCompleted = weekTasks.filter((t) => t.status === 'completed').length;
-    const logDays = dailyLogs.length;
+  const handleReportWeekCurrent = () => {
+    const now = new Date();
+    const ws = startOfWeek(now, { weekStartsOn: 1 });
+    setReportWeekStart(format(ws, 'yyyy-MM-dd'));
+  };
+
+  const renderReport = () => {
+    const report = computeWeeklyReport(reportWeekStart);
+    const startLabel = format(new Date(report.wsStr + 'T00:00:00'), 'MMM d');
+    const endLabel = format(new Date(report.weStr + 'T00:00:00'), 'MMM d');
 
     return (
       <>
-        <SectionHeader>Today</SectionHeader>
+        {/* Week navigation */}
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '8px 0' }}>
+          <Button size="sm" onClick={handleReportWeekPrev}>&#9664;</Button>
+          <span
+            style={{ fontSize: 12, fontWeight: 'bold', cursor: 'pointer' }}
+            onClick={handleReportWeekCurrent}
+          >
+            {report.isCurrentWeek ? 'This Week' : `${startLabel} - ${endLabel}`}
+          </span>
+          <Button size="sm" onClick={handleReportWeekNext}>&#9654;</Button>
+        </div>
+
+        {/* Score card */}
+        <ReportCard>
+          <ReportScoreContainer>
+            <ReportScore $color={report.gradeColor}>{report.score}</ReportScore>
+            <div>
+              <ReportGrade $color={report.gradeColor}>{report.grade}</ReportGrade>
+              {report.isCurrentWeek && (
+                <ReportWeekLabel>(In Progress)</ReportWeekLabel>
+              )}
+            </div>
+          </ReportScoreContainer>
+        </ReportCard>
+
+        {/* Breakdown */}
+        <SectionHeader>Breakdown</SectionHeader>
         <ListContainer>
-          <DashboardStat>
-            <StatLabel>Habits Completed</StatLabel>
-            <StatValue $color={habitRate >= 80 ? '#008000' : habitRate >= 50 ? '#808000' : '#ff0000'}>
-              {completedHabitsToday}/{totalHabitsToday} ({habitRate}%)
+          <ReportStatRow>
+            <StatLabel>Tasks Done</StatLabel>
+            <StatValue $color={report.taskRate >= 0.8 ? '#008000' : report.taskRate >= 0.5 ? '#808000' : '#ff0000'}>
+              {report.completedTasks}/{report.totalTasks} ({Math.round(report.taskRate * 100)}%)
             </StatValue>
-          </DashboardStat>
+          </ReportStatRow>
+          <ReportStatRow>
+            <StatLabel>Habit Completion</StatLabel>
+            <StatValue $color={report.habitRate >= 0.8 ? '#008000' : report.habitRate >= 0.5 ? '#808000' : '#ff0000'}>
+              {report.completedHabits}/{report.totalHabitEntries} ({Math.round(report.habitRate * 100)}%)
+            </StatValue>
+          </ReportStatRow>
+          <ReportStatRow>
+            <StatLabel>Days Logged</StatLabel>
+            <StatValue>{report.daysLogged}/7</StatValue>
+          </ReportStatRow>
         </ListContainer>
 
-        <SectionHeader>This Week</SectionHeader>
-        <ListContainer>
-          <DashboardStat>
-            <StatLabel>Tasks Completed</StatLabel>
-            <StatValue>{weekCompleted}/{weekTasks.length}</StatValue>
-          </DashboardStat>
-        </ListContainer>
+        {/* Goal progress */}
+        {report.goalSnapshots.length > 0 && (
+          <>
+            <SectionHeader>Goal Progress</SectionHeader>
+            <ListContainer>
+              {report.goalSnapshots.map((g, i) => (
+                <GoalProgressRow key={i}>
+                  <GoalProgressLabel>
+                    <span>{g.title}</span>
+                    <span style={{ fontWeight: 'bold', color: g.progress >= 70 ? '#008000' : g.progress >= 40 ? '#808000' : '#ff0000' }}>
+                      {g.progress}%
+                    </span>
+                  </GoalProgressLabel>
+                  <GoalProgressBarBg>
+                    <GoalProgressBarFill
+                      $width={g.progress}
+                      $color={g.progress >= 70 ? '#008000' : g.progress >= 40 ? '#808000' : '#ff0000'}
+                    />
+                  </GoalProgressBarBg>
+                </GoalProgressRow>
+              ))}
+            </ListContainer>
+          </>
+        )}
 
-        <SectionHeader>Active Goals</SectionHeader>
-        <ListContainer>
-          {activeGoals.map((goal) => {
-            const range = goal.target_value - goal.starting_value;
-            const progress = range > 0 ? Math.round(((goal.current_value - goal.starting_value) / range) * 100) : 0;
-            const daysLeft = Math.max(0, Math.ceil((new Date(goal.deadline).getTime() - Date.now()) / (1000 * 60 * 60 * 24)));
-            return (
-              <DashboardStat key={goal.goal_id}>
-                <StatLabel>{goal.title}</StatLabel>
-                <StatValue $color={progress >= 70 ? '#008000' : progress >= 40 ? '#808000' : '#ff0000'}>
-                  {progress}% ({daysLeft}d left)
-                </StatValue>
-              </DashboardStat>
-            );
-          })}
-          {activeGoals.length === 0 && (
-            <DashboardStat>
-              <StatLabel>No active goals</StatLabel>
-              <StatValue>-</StatValue>
-            </DashboardStat>
-          )}
-        </ListContainer>
+        {/* Wins */}
+        {report.weekWins.length > 0 && (
+          <>
+            <SectionHeader>Wins This Week ({report.weekWins.length})</SectionHeader>
+            <ListContainer>
+              {report.weekWins.map((win, i) => (
+                <WinItem key={i}>
+                  <Win95Icon $bg="#FFD700" $color="#800000" style={{ width: 16, height: 16, fontSize: 10, flexShrink: 0 }}>★</Win95Icon>
+                  {win}
+                </WinItem>
+              ))}
+            </ListContainer>
+          </>
+        )}
 
-        <SectionHeader>Stats</SectionHeader>
-        <ListContainer>
-          <DashboardStat>
-            <StatLabel>Total Log Days</StatLabel>
-            <StatValue>{logDays}</StatValue>
-          </DashboardStat>
-          <DashboardStat>
-            <StatLabel>Total Wins Logged</StatLabel>
-            <StatValue>{allAccomplishments.length}</StatValue>
-          </DashboardStat>
-        </ListContainer>
+        {report.totalTasks === 0 && report.totalHabitEntries === 0 && report.weekWins.length === 0 && (
+          <EmptyState>
+            <EmptyStateTitle>No data for this week</EmptyStateTitle>
+            <EmptyStateText>Navigate to a week with activity to see your report card.</EmptyStateText>
+          </EmptyState>
+        )}
       </>
     );
   };
-
-  const renderCoach = () => (
-    <>
-      <ToggleGroup style={{ margin: '0 0 8px 0' }}>
-        <ToggleButton $active={coachSubTab === 'chat'} onClick={() => setCoachSubTab('chat')}>
-          Chat
-        </ToggleButton>
-        <ToggleButton $active={coachSubTab === 'digest'} onClick={() => setCoachSubTab('digest')}>
-          Digest
-        </ToggleButton>
-        <ToggleButton $active={coachSubTab === 'dashboard'} onClick={() => setCoachSubTab('dashboard')}>
-          Stats
-        </ToggleButton>
-      </ToggleGroup>
-      {coachSubTab === 'chat' && renderCoachChat()}
-      {coachSubTab === 'digest' && renderCoachDigest()}
-      {coachSubTab === 'dashboard' && renderCoachDashboard()}
-    </>
-  );
 
   // Render Goal Summary (default tab)
   const renderGoalSummary = () => {
@@ -1344,7 +1326,15 @@ export default function MobilePage() {
 
   // Render Habits tab
   const renderHabits = () => {
-    if (activeHabits.length === 0) {
+    const viewHabits = getHabitsByDate(habitViewDate);
+    const isHabitToday = habitViewDate === today;
+    const isYesterday = (() => {
+      const d = new Date();
+      d.setDate(d.getDate() - 1);
+      return habitViewDate === format(d, 'yyyy-MM-dd');
+    })();
+
+    if (viewHabits.length === 0 && isHabitToday) {
       return (
         <EmptyState>
           <EmptyStateIcon>
@@ -1361,15 +1351,28 @@ export default function MobilePage() {
       );
     }
 
-    const completedCount = todayCompletions.filter((c) => c.completed).length;
+    const completedCount = habitDateCompletions.filter((c) => c.completed).length;
+    const dateLabel = isHabitToday ? 'Today' : isYesterday ? 'Yesterday' : format(new Date(habitViewDate + 'T00:00:00'), 'MMM d, yyyy');
 
     return (
       <>
+        {/* Date navigation */}
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '8px 0' }}>
+          <Button size="sm" onClick={handleHabitDatePrev}>&#9664;</Button>
+          <span
+            style={{ fontSize: 12, fontWeight: 'bold', cursor: 'pointer' }}
+            onClick={handleHabitDateToday}
+          >
+            {dateLabel}
+          </span>
+          <Button size="sm" onClick={handleHabitDateNext}>&#9654;</Button>
+        </div>
+
         <SectionHeader>
-          Today - {completedCount}/{activeHabits.length} completed
+          {dateLabel} - {completedCount}/{viewHabits.length} completed
         </SectionHeader>
         <ListContainer>
-          {activeHabits.map((habit) => {
+          {viewHabits.map((habit) => {
             const completed = isHabitCompleted(habit.habit_id);
             return (
               <ListItem
@@ -1400,6 +1403,11 @@ export default function MobilePage() {
               </ListItem>
             );
           })}
+          {viewHabits.length === 0 && (
+            <EmptyState style={{ minHeight: 80 }}>
+              <EmptyStateText>No habits scheduled for this day.</EmptyStateText>
+            </EmptyState>
+          )}
         </ListContainer>
       </>
     );
@@ -1792,7 +1800,7 @@ export default function MobilePage() {
               {activeTab === TABS.TODO && renderTodo()}
               {activeTab === TABS.MONTHLY && renderMonthlyGoals()}
               {activeTab === TABS.ACCOMPLISHMENTS && renderAccomplishments()}
-              {activeTab === TABS.COACH && renderCoach()}
+              {activeTab === TABS.REPORT && renderReport()}
             </ScrollArea>
           </ContentArea>
         </MainWindow>
@@ -1836,13 +1844,13 @@ export default function MobilePage() {
             <TabLabel>Goals</TabLabel>
           </BottomTab>
           <BottomTab
-            $active={activeTab === TABS.COACH}
-            onClick={() => setActiveTab(TABS.COACH)}
+            $active={activeTab === TABS.REPORT}
+            onClick={() => setActiveTab(TABS.REPORT)}
           >
             <TabIcon>
-              <Win95Icon $bg="#DDA0DD" $color="#800080" style={{ width: 18, height: 18, fontSize: 10 }}>♦</Win95Icon>
+              <Win95Icon $bg="#ADD8E6" $color="#000080" style={{ width: 18, height: 18, fontSize: 10 }}>&#9776;</Win95Icon>
             </TabIcon>
-            <TabLabel>Coach</TabLabel>
+            <TabLabel>Report</TabLabel>
           </BottomTab>
         </BottomTabs>
       </MobileContainer>

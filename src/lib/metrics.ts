@@ -344,6 +344,12 @@ export function isHabitActiveToday(habit: Habit): boolean {
   return daysActive.includes(today);
 }
 
+export function isHabitActiveOnDate(habit: Habit, date: string): boolean {
+  if (!habit.days_active || habit.days_active.length === 0) return true;
+  const dayOfWeek = format(parseISO(date), 'EEE').toLowerCase().slice(0, 3);
+  return habit.days_active.map((d) => d.toLowerCase().slice(0, 3)).includes(dayOfWeek);
+}
+
 export function getHabitCompletionRate(
   habitCompletions: HabitCompletion[],
   habits: Habit[]

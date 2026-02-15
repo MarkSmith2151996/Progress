@@ -1,0 +1,9 @@
+{
+  "mcpServers": {
+    "progress-tracker": {
+      "command": "node",
+      "args": ["mcp-server/src/index.js"],
+      "cwd": "C:\\Users\\Big A\\Progress-temp"
+    }
+  }
+}

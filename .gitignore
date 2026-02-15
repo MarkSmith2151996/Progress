@@ -1,6 +1,7 @@
 # Dependencies
 /node_modules
 /coach-server/node_modules
+/mcp-server/node_modules
 /.pnp
 .pnp.js
 .yarn/install-state.gz
