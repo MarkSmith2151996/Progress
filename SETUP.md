@@ -1,6 +1,6 @@
 # Progress Tracker - Complete Documentation
 
-> **Last Updated:** February 8, 2026
+> **Last Updated:** February 16, 2026
 > **Main File:** `C:\Users\Big A\Progress-temp`
 > **Mobile:** https://progress-umber-six.vercel.app/mobile
 > **Desktop:** `dist\win-unpacked\Progress Tracker.exe`
@@ -22,8 +22,8 @@ npm run dev              # Next.js dev server (localhost:3000)
 npm run electron:dev     # Electron dev mode
 npm run desktop:build    # Build desktop .exe
 
-# Coach Server (must be running on PC for mobile coach to work)
-cd coach-server && npm install && node server.js
+# MCP Server (lets Claude Code / Claude Desktop read+write all data)
+cd mcp-server && npm install && node src/index.js
 
 # Deploy (auto-deploys to Vercel on push)
 git push origin main
@@ -39,10 +39,11 @@ git push origin main
 │     (Vercel)          │     │     (Electron)        │
 │                       │     │                       │
 │  5 tabs: Wins, To Do, │     │  Calendar + Coach     │
-│  Monthly, Goals, Coach│     │  Outlook Express UI   │
-│                       │     │                       │
-│  Win95 keyboard       │     │  Direct Claude CLI    │
-│  (no native keyboard) │     │  via Electron IPC     │
+│  Monthly, Goals,      │     │  Outlook Express UI   │
+│  Report Card          │     │                       │
+│                       │     │  Direct Claude CLI    │
+│  Win95 keyboard       │     │  via Electron IPC     │
+│  (no native keyboard) │     │                       │
 └───────────┬───────────┘     └───────────┬───────────┘
             │                             │
             └──────────┬──────────────────┘
@@ -54,17 +55,23 @@ git push origin main
                 └──────┬──────┘
                        │
             ┌──────────▼──────────┐
-            │   Coach Server      │
+            │   MCP Server        │
             │   (Your PC)         │
             │                     │
-            │   Supabase listener │
-            │   → Claude CLI      │
-            │   → Response back   │
-            │   + Daily digests   │
+            │   Claude Code /     │
+            │   Claude Desktop    │
+            │   reads + writes    │
+            │   all data via      │
+            │   Supabase          │
+            │                     │
+            │   13 tools +        │
+            │   1 prompt          │
             └─────────────────────┘
 ```
 
-**Key insight:** NO Claude API key is used anywhere. All AI features use Claude CLI (Max subscription). The coach server on your PC bridges mobile to Claude CLI via Supabase as a message queue.
+**Key insight:** NO Claude API key is used anywhere. All AI features use Claude CLI (Max subscription). The MCP server lets Claude Code and Claude Desktop read/write all Progress data directly via Supabase.
+
+**Note:** The old `coach-server/` (Supabase relay → Claude CLI for mobile chat) is still in the repo but no longer actively used. The Coach tab was replaced with a Weekly Report Card. Desktop still has its own Coach panel via Electron IPC.
 
 ---
 
@@ -74,10 +81,11 @@ git push origin main
 |-------|-----------|---------|
 | Frontend | Next.js 14, React 18 | App framework, SSR |
 | UI | react95, styled-components | Windows 95 retro theme |
-| State | Zustand | goalStore, logStore, coachStore, settingsStore |
+| State | Zustand | goalStore, logStore, settingsStore (+ coachStore for desktop) |
 | Database | Supabase (Postgres) | Cloud storage + real-time sync |
 | Desktop | Electron 40 | Windows app wrapper |
-| AI | Claude CLI | Coach chat, goal matching, digests |
+| AI | Claude CLI | Goal matching, digests, MCP tools |
+| MCP | @modelcontextprotocol/sdk | Claude Code/Desktop data access |
 | Offline | localStorage | Fallback when Supabase unavailable |
 | Deploy | Vercel | Mobile web hosting (auto-deploy) |
 | Deploy | electron-builder | Desktop .exe packaging |
@@ -98,8 +106,8 @@ git push origin main
 | `habits` | habit_id (text) | Habit definitions | name, target_minutes, days_active[], active, sort_order |
 | `habit_completions` | completion_id (text) | Daily check-offs | habit_id (FK), date, completed |
 | `tasks` | task_id (text) | Day-specific to-dos | goal_id (FK), description, planned_date, status, time_estimated, notes |
-| `coach_messages` | id (uuid) | Chat relay queue | session_id, role, content, platform, status (pending/processing/completed/error) |
-| `coach_digests` | id (uuid) | AI summaries | digest_type (daily/weekly), content, metrics (jsonb), digest_date |
+| `coach_messages` | id (uuid) | Chat relay queue (legacy — desktop only) | session_id, role, content, platform, status |
+| `coach_digests` | id (uuid) | AI summaries (legacy — desktop only) | digest_type, content, metrics (jsonb), digest_date |
 | `user_settings` | id (text) | Preferences | coach_context, theme, preferences (jsonb: display_name, accent_color, font_size, keyboard_size, coach_tone, digest_enabled, etc.) |
 
 ### Real-time
@@ -121,7 +129,13 @@ GOOGLE_SPREADSHEET_ID=...            # Google Sheets integration
 GOOGLE_CREDENTIALS=...               # Service account JSON
 ```
 
-### Coach Server (`coach-server/.env` — gitignored)
+### MCP Server (`mcp-server/.env` — gitignored)
+```
+SUPABASE_URL=https://nmagobufnzbxcvbbntvn.supabase.co
+SUPABASE_ANON_KEY=eyJ...
+```
+
+### Coach Server (`coach-server/.env` — gitignored, legacy)
 ```
 SUPABASE_URL=https://nmagobufnzbxcvbbntvn.supabase.co
 SUPABASE_ANON_KEY=eyJ...
@@ -161,16 +175,28 @@ User logs accomplishment: "took one SAT test"
   → Toast notification: "Goal updated!"
 ```
 
-### Coach Message Relay (mobile)
+### MCP Server (Claude Code / Claude Desktop)
 ```
-User sends message on mobile Coach tab
-  → coachStore inserts into coach_messages (status: 'pending')
-  → Coach server on PC detects via real-time subscription
-  → Server builds context from Supabase data
-  → Server calls: claude -p "SYSTEM: ... USER: ..."
-  → Server inserts response (status: 'completed')
-  → Mobile receives via real-time subscription
-  → Message appears in chat
+User asks Claude Code: "How did I do this week?"
+  → Claude calls get_weekly_report MCP tool
+  → MCP server queries Supabase (tasks, habits, logs, goals)
+  → Computes weekly score + breakdown
+  → Returns structured data to Claude
+  → Claude formats response for user
+
+User asks Claude: "Update my goal progress"
+  → Claude calls evaluate_goals MCP tool (gathers all evidence per goal)
+  → Claude analyzes: tasks completed, accomplishments logged, habit data
+  → Claude DERIVES real progress % from evidence (ignores stored numbers)
+  → Presents proposed updates with reasoning
+  → User confirms → Claude calls update_goal_progress for each goal
+  → Changes appear in mobile app via real-time sync
+```
+
+### Coach Message Relay (legacy — desktop only)
+```
+Desktop coach still works via Electron IPC → direct Claude CLI
+Mobile coach tab has been replaced with Weekly Report Card
 ```
 
 ---
@@ -188,7 +214,15 @@ Progress-temp/
 ├── tsconfig.json                      # TypeScript config
 ├── supabase-schema.sql                # Full database schema
 ├── SETUP.md                           # This file
-├── COACH_PLAN.md                      # Coach integration architecture plan
+├── COACH_PLAN.md                      # Coach integration architecture plan (legacy)
+├── .mcp.json                          # Claude Code MCP server config
+│
+├── mcp-server/                        # MCP server for Claude Code / Desktop
+│   ├── package.json                   # @modelcontextprotocol/sdk, @supabase/supabase-js, date-fns, dotenv, zod
+│   ├── .env                           # Supabase credentials (gitignored)
+│   └── src/
+│       ├── index.js                   # Main MCP server — 13 tools + 1 prompt (546 lines)
+│       └── supabase.js                # Supabase client + query helpers (117 lines)
 │
 ├── src/
 │   ├── app/
@@ -196,9 +230,9 @@ Progress-temp/
 │   │   ├── layout.tsx                 # Root layout (React95Provider)
 │   │   ├── login/page.tsx             # PIN login page
 │   │   ├── mobile/
-│   │   │   ├── page.tsx               # Main mobile UI (2,351 lines) — 5 tabs
+│   │   │   ├── page.tsx               # Main mobile UI (2,482 lines) — 5 tabs
 │   │   │   ├── layout.tsx             # Mobile layout (PWA meta, Win95 keyboard)
-│   │   │   ├── coach/page.tsx         # Redirects to main page Coach tab
+│   │   │   ├── coach/page.tsx         # Redirects to main page (legacy route)
 │   │   │   ├── calendar/page.tsx      # Monthly calendar + day log editor (575 lines)
 │   │   │   └── settings/page.tsx      # Comprehensive settings (886 lines) — 7 collapsible sections
 │   │   └── api/
@@ -248,7 +282,7 @@ Progress-temp/
 │   │   ├── goalUpdater.ts             # Smart goal matching: Claude + keywords (282 lines)
 │   │   ├── claude.ts                  # Claude CLI wrapper + NLP parsing (584 lines)
 │   │   ├── contextBuilder.ts          # Build context package for coach (166 lines)
-│   │   ├── metrics.ts                 # Streaks, scores, patterns, milestones (794 lines)
+│   │   ├── metrics.ts                 # Streaks, scores, patterns, milestones (799 lines)
 │   │   ├── analytics.ts               # Analytics calculations
 │   │   ├── coachSync.ts               # Legacy coach sync (Telegram proxy)
 │   │   ├── summaryGenerator.ts        # Weekly/monthly summaries (460 lines)
@@ -310,7 +344,9 @@ Progress-temp/
 
 **Sub-tab: Habits**
 - Recurring daily habits with checkboxes
-- Shows streak count per habit
+- **Date navigation** (previous / today / next) — backdate forgotten habits
+- Only shows habits scheduled for the viewed day (`days_active` filter)
+- Shows streak count per habit (always current overall streak)
 - Edit habit (name, target minutes, active days)
 - Completion rate indicator
 
@@ -334,31 +370,42 @@ Progress-temp/
 - Click to edit any goal
 - Status indicators: ahead, on track, behind
 
-### Tab 5: Coach (AI)
-**Sub-view: Chat**
-- Real-time conversation with Claude via Supabase relay
-- Online/offline status indicator
-- 90s timeout with "coach offline" fallback message
-- Messages displayed as Win95-styled bubbles
+### Tab 5: Weekly Report Card
+Replaced the old Coach tab. Shows computed weekly stats — no AI needed.
 
-**Sub-view: Digest**
-- Latest daily AI-generated summary
-- Previous digests history
-- Generated by coach server every 24 hours
+**Score Card**
+- Big number (0-100) with color coding: green ≥80, yellow ≥50, red <50
+- Letter grade (A/B/C/D/F)
+- Shows "(In Progress)" for current week
 
-**Sub-view: Stats (Dashboard)**
-- Habits completed today (count + percentage)
-- Tasks completed this week
-- Active goals with progress bars + days remaining
-- Total log days and total wins logged
-- No AI needed — computed from Supabase data
+**Score Formula** (30/30/20/20 split):
+- 30% task completion rate (completed / total tasks in week)
+- 30% habit completion rate (completed slots / total scheduled slots)
+- 20% logging consistency (days with logs / days in week)
+- 20% goal progress (average % across active goals)
+
+**Breakdown Section**
+- Tasks completed (e.g., "5 / 8")
+- Habit rate (e.g., "75%")
+- Days logged (e.g., "5 / 7")
+- Logging streak
+
+**Goal Progress**
+- Each active goal with title + progress bar + percentage
+
+**Wins List**
+- All accomplishments logged during the week
+
+**Week Navigation**
+- Previous ◄ / "This Week" or date range label / ► Next
+- Navigate to any past week to see historical performance
 
 ### Global Features
 - **Win95 on-screen keyboard**: Auto-appears on ALL text inputs. Native iOS keyboard is suppressed via `inputMode="none"`. QWERTY layout with numbers, shift, backspace, enter, punctuation. Date pickers and selects still use native controls.
 - **Sync status bar**: Shows synced/offline/syncing/error with colored indicator
 - **Refresh button**: Manual sync
 - **Title bar**: Tab name + context-appropriate "+" button + calendar/settings shortcuts
-- **Bottom tab bar**: 5 tabs (Wins, To Do, Monthly, Goals, Coach) with Win95-styled icons
+- **Bottom tab bar**: 5 tabs (Wins, To Do, Monthly, Goals, Report) with Win95-styled icons
 
 ### Popups (8 total)
 1. **Add Goal** — title, target value, deadline, type, keywords, increment type
@@ -412,11 +459,106 @@ window.electronAPI = {
 
 ---
 
-## Coach Server — Detailed
+## MCP Server — Detailed
+
+**Location:** `mcp-server/`
+**Runtime:** Node.js (plain JS — TypeScript abandoned due to MCP SDK type depth issues)
+**Dependencies:** @modelcontextprotocol/sdk, @supabase/supabase-js, date-fns, dotenv, zod
+**Transport:** StdioServerTransport (stdio-based, used by Claude Code and Claude Desktop)
+
+### Configuration
+
+**Claude Code** (`.mcp.json` in project root):
+```json
+{
+  "mcpServers": {
+    "progress-tracker": {
+      "command": "node",
+      "args": ["mcp-server/src/index.js"],
+      "cwd": "C:\\Users\\Big A\\Progress-temp"
+    }
+  }
+}
+```
+
+**Claude Desktop** (`%APPDATA%\Claude\claude_desktop_config.json`):
+```json
+{
+  "mcpServers": {
+    "progress-tracker": {
+      "command": "node",
+      "args": ["C:/Users/Big A/Progress-temp/mcp-server/src/index.js"]
+    }
+  }
+}
+```
+
+### Tools (13 total)
+
+**READ tools (7):**
+
+| Tool | Parameters | Description |
+|------|-----------|-------------|
+| `get_goals` | `active_only?` (bool) | All goals with progress |
+| `get_tasks` | `start_date?`, `end_date?` | Tasks for date range (default: last 7 days) |
+| `get_habits` | `active_only?` (bool) | Habits with today's completion status |
+| `get_habit_completions` | `start_date?`, `end_date?` | Completions for date range |
+| `get_daily_logs` | `start_date?`, `end_date?` | Daily logs for date range |
+| `get_weekly_report` | `week_offset?` (number) | Computed weekly stats (same formula as Report tab) |
+| `evaluate_goals` | *(none)* | Gathers all evidence per goal for AI-driven evaluation |
+
+**WRITE tools (6):**
+
+| Tool | Parameters | Description |
+|------|-----------|-------------|
+| `add_task` | `description`, `planned_date`, `goal_id?` | Create a task |
+| `log_accomplishment` | `text`, `date?` | Add accomplishment to daily log |
+| `toggle_habit` | `habit_id`, `date?` | Mark habit done/undone for a date |
+| `update_goal_progress` | `goal_id`, `current_value` | Set goal's current progress value |
+| `set_difficulty_tier` | `date`, `tier` (low/med/high) | Set day difficulty |
+| `generate_weekly_summary` | `content`, `week_start?` | Store AI-generated weekly summary |
+
+### Prompts (1)
+
+| Prompt | Description |
+|--------|-------------|
+| `update_goals` | Algorithm for Claude to evaluate + update all goal progress |
+
+**`update_goals` flow:**
+1. Claude calls `evaluate_goals` to pull all data (goals, tasks, accomplishments, habits)
+2. Claude IGNORES existing `current_value` — derives progress from evidence
+3. For each goal: analyzes linked tasks + keyword-matching accomplishments + time elapsed
+4. Presents proposed changes with reasoning to user
+5. Waits for user confirmation
+6. Calls `update_goal_progress` for each approved change
+7. Changes appear in mobile app via real-time sync
+
+### supabase.js Helpers
+
+| Function | Description |
+|----------|-------------|
+| `fetchGoals(activeOnly?)` | Query goals table |
+| `fetchTasks(start?, end?)` | Query tasks with date range |
+| `fetchHabits(activeOnly?)` | Query habits table |
+| `fetchHabitCompletions(start?, end?)` | Query completions with date range |
+| `fetchDailyLogs(start?, end?)` | Query daily_logs with date range |
+| `upsertTask(task)` | Insert or update task |
+| `upsertDailyLog(log)` | Insert or update daily log |
+| `upsertHabitCompletion(completion)` | Insert or update habit completion |
+| `upsertGoal(goal)` | Insert or update goal |
+
+---
+
+## Coach Server — Legacy
+
+> **Note:** The coach server is no longer actively used. The Coach tab was replaced with a Weekly Report Card. Desktop coach still works via Electron IPC (no server needed). The code is preserved in the repo.
 
 **Location:** `coach-server/`
-**Runtime:** Node.js (plain JS, not TypeScript)
+**Runtime:** Node.js (plain JS)
 **Dependencies:** @supabase/supabase-js, dotenv
+
+<details>
+<summary>Click to expand legacy coach server docs</summary>
 
 ### server.js Flow
 ```
@@ -476,6 +618,8 @@ The server builds a detailed system prompt using **dynamic preferences** from `u
 1. Double-click `coach-server\start.bat`, or
 2. Create shortcut to `start.bat` in `shell:startup` folder (`Win+R → shell:startup`)
 
+</details>
+
 ---
 
 ## Stores — Detailed
@@ -522,11 +666,12 @@ The server builds a detailed system prompt using **dynamic preferences** from `u
 | deleteHabit(habitId) | Delete habit |
 | toggleHabit(habitId, date) | Toggle habit completion |
 | getTodayHabits() | Get habits active today |
+| getHabitsByDate(date) | Get habits active on a specific date (filters by `days_active`) |
 | getTasksByDate(date) | Get tasks for specific date |
 | getDifficultyTier(date) | Get tier for a date (defaults to 'med') |
 | setDifficultyTier(date, tier) | Set Low/Med/High tier for a date |
 
-### coachStore.ts (275 lines)
+### coachStore.ts (275 lines) — Desktop Only
 | State | Type | Description |
 |-------|------|-------------|
 | chatHistory | ChatMessage[] | Current session messages |
@@ -546,9 +691,8 @@ The server builds a detailed system prompt using **dynamic preferences** from `u
 | clearChat() | Reset session + re-subscribe |
 | cleanup() | Remove subscription |
 
-**Dual mode:**
+**Desktop only** — mobile no longer uses the coach. Desktop uses:
 - **Electron**: `window.electronAPI.coachChat(message)` → direct Claude CLI
-- **Web/Mobile**: Insert into `coach_messages` table → coach server processes → response via subscription
 
 ### settingsStore.ts (254 lines)
 | State | Type | Description |
@@ -628,7 +772,8 @@ The server builds a detailed system prompt using **dynamic preferences** from `u
 - `buildContextPackage()` — fetches all data, computes metrics
 - Returns: currentDate, energy, activeGoals (with progress), tasks, habits, streak, alerts, patterns
 
-### metrics.ts (794 lines)
+### metrics.ts (799 lines)
+- Habit filtering: `isHabitActiveToday`, `isHabitActiveOnDate` (checks `days_active` for any date)
 - Goal: `calculateGoalProgress`, `determineGoalStatus` (ahead/on_track/behind)
 - Weekly: `calculateWeeklyScore` (40% tasks + 35% goals + 15% bonus + 10% consistency)
 - Streaks: `calculateHabitStreak`, `calculateLoggingStreak`
