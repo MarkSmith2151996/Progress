@@ -104,6 +104,19 @@ async function upsertGoal(goal) {
   return data;
 }
 
+async function fetchUserSettings() {
+  const { data, error } = await supabase
+    .from('user_settings')
+    .select('*')
+    .eq('id', 'default_user')
+    .single();
+  if (error) {
+    if (error.code === 'PGRST116') return null;
+    throw error;
+  }
+  return data;
+}
+
 module.exports = {
   fetchGoals,
   fetchTasks,
@@ -114,4 +127,5 @@ module.exports = {
   upsertDailyLog,
   upsertHabitCompletion,
   upsertGoal,
+  fetchUserSettings,
 };

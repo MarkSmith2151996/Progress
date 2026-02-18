@@ -1,13 +1,13 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import React, { useState, useEffect } from 'react';
 import styled from 'styled-components';
 import { Button, ProgressBar } from 'react95';
 import { format, startOfWeek, endOfWeek, subWeeks, addWeeks } from 'date-fns';
 import { useRouter } from 'next/navigation';
 import { useLogStore } from '@/stores/logStore';
 import { useGoalStore } from '@/stores/goalStore';
-import { Goal, Habit, HabitWithStatus, GoalType, GoalStatus, Task, TaskStatus, DifficultyTier } from '@/types';
+import { Goal, Habit, HabitWithStatus, GoalType, GoalStatus, Task, TaskStatus, DifficultyTier, MissReason } from '@/types';
 import { isHabitActiveOnDate } from '@/lib/metrics';
 import { useSettingsStore } from '@/stores/settingsStore';
 import {
@@ -415,6 +415,42 @@ const TierLegendDot = styled.div<{ $color: string }>`
   border: 1px solid #808080;
 `;
 
+const MissReasonRow = styled.div`
+  display: flex;
+  gap: 4px;
+  padding: 2px 8px 6px 36px;
+  background: #f8f8f8;
+  border-bottom: 1px solid #e0e0e0;
+`;
+
+const MissReasonButton = styled.button<{ $selected?: boolean }>`
+  font-size: 9px;
+  font-family: inherit;
+  padding: 2px 6px;
+  background: ${props => props.$selected ? '#c0c0c0' : '#e8e8e8'};
+  border: 1px solid;
+  border-color: ${props => props.$selected
+    ? '#808080 #dfdfdf #dfdfdf #808080'
+    : '#dfdfdf #808080 #808080 #dfdfdf'};
+  cursor: pointer;
+  color: ${props => props.$selected ? '#000' : '#808080'};
+
+  &:active {
+    border-color: #808080 #dfdfdf #dfdfdf #808080;
+  }
+`;
+
+const FocusBanner = styled.div`
+  background: #fff;
+  border: 2px solid;
+  border-color: #808080 #dfdfdf #dfdfdf #808080;
+  padding: 6px 8px;
+  margin-bottom: 8px;
+  font-size: 11px;
+  color: #000080;
+  font-weight: bold;
+`;
+
 // Helpers
 function getWeekStart(dateStr: string): string {
   const d = new Date(dateStr + 'T00:00:00');
@@ -498,6 +534,7 @@ export default function MobilePage() {
   const [newTaskGoalId, setNewTaskGoalId] = useState<string | null>(null);
   const [newTaskTimeEstimated, setNewTaskTimeEstimated] = useState('');
   const [newTaskNotes, setNewTaskNotes] = useState('');
+  const [showFocusPopup, setShowFocusPopup] = useState(false);
 
   const {
     habits,
@@ -517,6 +554,9 @@ export default function MobilePage() {
     getHabitsByDate,
     getDifficultyTier,
     setDifficultyTier,
+    setMissReason,
+    getDailyFocus,
+    setDailyFocus,
     syncStatus: logSyncStatus,
     goalUpdateMessage,
     clearGoalUpdateMessage,
@@ -613,6 +653,18 @@ export default function MobilePage() {
 
   const isHabitCompleted = (habitId: string) => {
     return habitDateCompletions.some((c) => c.habit_id === habitId && c.completed);
+  };
+
+  const getHabitMissReason = (habitId: string): MissReason | undefined => {
+    const completion = habitDateCompletions.find((c) => c.habit_id === habitId);
+    return completion?.miss_reason;
+  };
+
+  const MISS_REASON_LABELS: Record<MissReason, string> = {
+    no_time: 'No time',
+    forgot: 'Forgot',
+    not_prioritized: 'Skip',
+    not_applicable: 'N/A',
   };
 
   const handleToggleHabit = async (habitId: string) => {
@@ -809,7 +861,7 @@ export default function MobilePage() {
   const resetTaskForm = () => {
     setNewTaskDescription('');
     setNewTaskPlannedDate(today);
-    setNewTaskGoalId(null);
+    setNewTaskGoalId(getDailyFocus(today).primary);
     setNewTaskTimeEstimated('');
     setNewTaskNotes('');
   };
@@ -1105,6 +1157,20 @@ export default function MobilePage() {
     const todayDate = format(new Date(), 'yyyy-MM-dd');
     const isCurrentWeek = wsStr <= todayDate && weStr >= todayDate;
 
+    // Baseline check: zero out weeks before baseline_date
+    const { baseline_date } = useSettingsStore.getState();
+    if (baseline_date && weStr < baseline_date) {
+      return {
+        wsStr, weStr, isCurrentWeek,
+        taskRate: 0, completedTasks: 0, totalTasks: 0,
+        habitRate: 0, completedHabits: 0, totalHabitEntries: 0,
+        daysLogged: 0, loggingRate: 0,
+        goalSnapshots: [], avgGoalProgress: 0,
+        weekWins: [] as string[],
+        score: 0, grade: '\u2014' as string, gradeColor: '#808080',
+      };
+    }
+
     // Tasks in range
     const weekTasks = tasks.filter((t) => t.planned_date >= wsStr && t.planned_date <= weStr);
     const completedTasks = weekTasks.filter((t) => t.status === 'completed');
@@ -1390,33 +1456,54 @@ export default function MobilePage() {
         <ListContainer>
           {viewHabits.map((habit) => {
             const completed = isHabitCompleted(habit.habit_id);
+            const missReason = getHabitMissReason(habit.habit_id);
             return (
-              <ListItem
-                key={habit.habit_id}
-                $completed={completed}
-                $clickable
-                onClick={() => handleToggleHabit(habit.habit_id)}
-              >
-                <Checkbox $checked={completed}>
-                  {completed && '✓'}
-                </Checkbox>
-                <ListItemText $completed={completed}>
-                  {habit.name}
-                </ListItemText>
-                {habit.streak > 0 && (
-                  <ListItemMeta>
-                    <Win95Icon $bg="#FFD700" $color="#800000" style={{ width: 16, height: 16, fontSize: 10 }}>★</Win95Icon>
-                    {habit.streak}
-                  </ListItemMeta>
-                )}
-                <Button
-                  size="sm"
-                  style={{ marginLeft: 8, minWidth: 32, padding: '2px 6px' }}
-                  onClick={(e) => handleEditHabit(habit, e)}
+              <React.Fragment key={habit.habit_id}>
+                <ListItem
+                  $completed={completed}
+                  $clickable
+                  onClick={() => handleToggleHabit(habit.habit_id)}
                 >
-                  ✎
-                </Button>
-              </ListItem>
+                  <Checkbox $checked={completed}>
+                    {completed && '\u2713'}
+                  </Checkbox>
+                  <ListItemText $completed={completed}>
+                    {habit.name}
+                    {habit.target_minutes && (
+                      <span style={{ fontSize: 10, color: '#808080', marginLeft: 4 }}>({habit.target_minutes} min)</span>
+                    )}
+                  </ListItemText>
+                  {habit.streak > 0 && (
+                    <ListItemMeta>
+                      <Win95Icon $bg="#FFD700" $color="#800000" style={{ width: 16, height: 16, fontSize: 10 }}>{'\u2605'}</Win95Icon>
+                      {habit.streak}
+                    </ListItemMeta>
+                  )}
+                  <Button
+                    size="sm"
+                    style={{ marginLeft: 8, minWidth: 32, padding: '2px 6px' }}
+                    onClick={(e) => handleEditHabit(habit, e)}
+                  >
+                    {'\u270E'}
+                  </Button>
+                </ListItem>
+                {!completed && (
+                  <MissReasonRow>
+                    {(Object.keys(MISS_REASON_LABELS) as MissReason[]).map((reason) => (
+                      <MissReasonButton
+                        key={reason}
+                        $selected={missReason === reason}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setMissReason(habit.habit_id, habitViewDate, reason);
+                        }}
+                      >
+                        {MISS_REASON_LABELS[reason]}
+                      </MissReasonButton>
+                    ))}
+                  </MissReasonRow>
+                )}
+              </React.Fragment>
             );
           })}
           {viewHabits.length === 0 && (
@@ -1627,6 +1714,10 @@ export default function MobilePage() {
   };
 
   const renderTodo = () => {
+    const focus = getDailyFocus(today);
+    const focusGoal = focus.primary ? monthlyGoals.find((g) => g.goal_id === focus.primary) : null;
+    const secondaryGoal = focus.secondary ? monthlyGoals.find((g) => g.goal_id === focus.secondary) : null;
+
     return (
       <>
         <div style={{ display: 'flex', gap: 4, marginBottom: 8 }}>
@@ -1640,12 +1731,29 @@ export default function MobilePage() {
             Assign Difficulty
           </Button>
           <Button
+            style={{ flex: 1, fontSize: 11, padding: '4px 8px' }}
+            onClick={() => setShowFocusPopup(true)}
+          >
+            {focusGoal ? `Focus: ${focusGoal.title.slice(0, 12)}...` : 'Set Focus'}
+          </Button>
+          <Button
             style={{ minWidth: 32, fontSize: 11, padding: '4px 6px' }}
             onClick={() => setShowDailySummary(true)}
           >
             [i]
           </Button>
         </div>
+
+        {focusGoal && (
+          <FocusBanner>
+            Today&apos;s Focus: {focusGoal.title}
+            {secondaryGoal && (
+              <span style={{ fontWeight: 'normal', color: '#808080', fontSize: 10 }}>
+                {' '}+ {secondaryGoal.title}
+              </span>
+            )}
+          </FocusBanner>
+        )}
 
         <ToggleGroup>
           <ToggleButton
@@ -2204,6 +2312,61 @@ export default function MobilePage() {
 
       {/* Difficulty Tier Popup */}
       {showDifficultyPopup && renderDifficultyPopup()}
+
+      {/* Daily Focus Popup */}
+      {showFocusPopup && (() => {
+        const focus = getDailyFocus(today);
+        return (
+          <PopupOverlay onClick={() => setShowFocusPopup(false)}>
+            <PopupWindow onClick={(e: React.MouseEvent) => e.stopPropagation()}>
+              <TitleBar>
+                <span>Set Daily Focus</span>
+                <TitleBarButton size="sm" onClick={() => setShowFocusPopup(false)}>
+                  {'\u2715'}
+                </TitleBarButton>
+              </TitleBar>
+              <PopupContent>
+                <FormRow>
+                  <FormLabel>Primary Focus Goal</FormLabel>
+                  <StyledSelect
+                    value={focus.primary || ''}
+                    onChange={(e: React.ChangeEvent<HTMLSelectElement>) => {
+                      const val = e.target.value || null;
+                      // If selecting same as secondary, clear secondary
+                      const sec = val && focus.secondary === val ? null : focus.secondary;
+                      setDailyFocus(today, val, sec);
+                    }}
+                  >
+                    <option value="">-- None --</option>
+                    {monthlyGoals.map((g) => (
+                      <option key={g.goal_id} value={g.goal_id}>{g.title}</option>
+                    ))}
+                  </StyledSelect>
+                </FormRow>
+                <FormRow>
+                  <FormLabel>Secondary Focus (optional)</FormLabel>
+                  <StyledSelect
+                    value={focus.secondary || ''}
+                    onChange={(e: React.ChangeEvent<HTMLSelectElement>) => {
+                      setDailyFocus(today, focus.primary, e.target.value || null);
+                    }}
+                  >
+                    <option value="">-- None --</option>
+                    {monthlyGoals
+                      .filter((g) => g.goal_id !== focus.primary)
+                      .map((g) => (
+                        <option key={g.goal_id} value={g.goal_id}>{g.title}</option>
+                      ))}
+                  </StyledSelect>
+                </FormRow>
+                <Button primary fullWidth onClick={() => setShowFocusPopup(false)}>
+                  Done
+                </Button>
+              </PopupContent>
+            </PopupWindow>
+          </PopupOverlay>
+        );
+      })()}
 
       {/* Daily Summary Popup */}
       {showDailySummary && (() => {

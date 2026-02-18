@@ -78,6 +78,8 @@ export interface DailyLog {
   notes: string | null;
   sick: boolean;
   accomplishments?: string[];
+  primary_goal_id?: string | null;
+  secondary_goal_id?: string | null;
   created_at: string;
   updated_at?: string;
 }
@@ -96,11 +98,14 @@ export interface Habit {
   created_at: string;
 }
 
+export type MissReason = 'no_time' | 'forgot' | 'not_prioritized' | 'not_applicable';
+
 export interface HabitCompletion {
   completion_id: string;
   habit_id: string;
   date: string;
   completed: boolean;
+  miss_reason?: MissReason;
   created_at: string;
 }
 
@@ -378,6 +383,8 @@ export interface UserSettings {
   keyboard_size: KeyboardSize;
   // Habits
   show_streaks: boolean;
+  // Report Card
+  baseline_date: string | null;
 }
 
 export interface WeekColor {

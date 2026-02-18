@@ -10,6 +10,7 @@ import {
   DailyLog,
   Habit,
   HabitCompletion,
+  MissReason,
   CoachMessage,
   CoachDigest,
 } from '@/types';
@@ -81,6 +82,8 @@ interface DbDailyLog {
   notes: string | null;
   sick: boolean;
   accomplishments: string[] | null;
+  primary_goal_id: string | null;
+  secondary_goal_id: string | null;
   created_at: string;
 }
 
@@ -99,6 +102,7 @@ interface DbHabitCompletion {
   habit_id: string;
   date: string;
   completed: boolean;
+  miss_reason: string | null;
   created_at: string;
 }
 
@@ -176,6 +180,8 @@ function dbToDailyLog(db: DbDailyLog): DailyLog {
     notes: db.notes,
     sick: db.sick,
     accomplishments: db.accomplishments ?? undefined,
+    primary_goal_id: db.primary_goal_id ?? undefined,
+    secondary_goal_id: db.secondary_goal_id ?? undefined,
     created_at: db.created_at,
   };
 }
@@ -194,6 +200,8 @@ function dailyLogToDb(log: DailyLog): DbDailyLog {
     notes: log.notes,
     sick: log.sick,
     accomplishments: log.accomplishments ?? null,
+    primary_goal_id: log.primary_goal_id ?? null,
+    secondary_goal_id: log.secondary_goal_id ?? null,
     created_at: log.created_at,
   };
 }
@@ -228,6 +236,7 @@ function dbToHabitCompletion(db: DbHabitCompletion): HabitCompletion {
     habit_id: db.habit_id,
     date: db.date,
     completed: db.completed,
+    miss_reason: (db.miss_reason as MissReason) ?? undefined,
     created_at: db.created_at,
   };
 }
@@ -238,6 +247,7 @@ function habitCompletionToDb(completion: HabitCompletion): DbHabitCompletion {
     habit_id: completion.habit_id,
     date: completion.date,
     completed: completion.completed,
+    miss_reason: completion.miss_reason ?? null,
     created_at: completion.created_at,
   };
 }

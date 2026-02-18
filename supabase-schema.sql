@@ -36,6 +36,8 @@ CREATE TABLE IF NOT EXISTS daily_logs (
   notes TEXT,
   sick BOOLEAN DEFAULT FALSE,
   accomplishments TEXT[],
+  primary_goal_id TEXT REFERENCES goals(goal_id) ON DELETE SET NULL,
+  secondary_goal_id TEXT REFERENCES goals(goal_id) ON DELETE SET NULL,
   created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
@@ -56,6 +58,7 @@ CREATE TABLE IF NOT EXISTS habit_completions (
   habit_id TEXT REFERENCES habits(habit_id) ON DELETE CASCADE,
   date DATE NOT NULL,
   completed BOOLEAN DEFAULT FALSE,
+  miss_reason TEXT,  -- 'no_time' | 'forgot' | 'not_prioritized' | 'not_applicable'
   created_at TIMESTAMPTZ DEFAULT NOW(),
   UNIQUE(habit_id, date)
 );

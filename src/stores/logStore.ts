@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import { DailyLog, DifficultyTier, Task, Habit, HabitCompletion, HabitWithStatus, Goal } from '@/types';
+import { DailyLog, DifficultyTier, Task, Habit, HabitCompletion, HabitWithStatus, Goal, MissReason } from '@/types';
 import { enrichHabitWithStatus, isHabitActiveToday, isHabitActiveOnDate, getToday } from '@/lib/metrics';
 import * as browserStorage from '@/lib/browserStorage';
 import * as supabase from '@/lib/supabase';
@@ -35,6 +35,7 @@ interface LogState {
   toggleTask: (taskId: string) => Promise<void>;
   saveHabitCompletion: (completion: HabitCompletion) => Promise<void>;
   toggleHabit: (habitId: string, date: string) => Promise<void>;
+  setMissReason: (habitId: string, date: string, reason: MissReason) => Promise<void>;
   addHabit: (habit: Habit) => Promise<void>;
   updateHabit: (habit: Habit) => Promise<void>;
   deleteHabit: (habitId: string) => Promise<void>;
@@ -48,6 +49,8 @@ interface LogState {
   getHabitsByDate: (date: string) => HabitWithStatus[];
   getDifficultyTier: (date: string) => DifficultyTier;
   setDifficultyTier: (date: string, tier: DifficultyTier) => Promise<void>;
+  getDailyFocus: (date: string) => { primary: string | null; secondary: string | null };
+  setDailyFocus: (date: string, primaryGoalId: string | null, secondaryGoalId?: string | null) => Promise<void>;
 
   // Real-time subscriptions
   subscribeToRealtime: () => void;
@@ -236,11 +239,32 @@ export const useLogStore = create<LogState>((set, get) => ({
       (c) => c.habit_id === habitId && c.date === date
     );
 
+    const nowCompleted = !existing?.completed;
     const completion: HabitCompletion = {
       completion_id: existing?.completion_id || `hc_${Date.now()}`,
       habit_id: habitId,
       date,
-      completed: !existing?.completed,
+      completed: nowCompleted,
+      // Clear miss_reason when completing, preserve when uncompleting
+      miss_reason: nowCompleted ? undefined : existing?.miss_reason,
+      created_at: existing?.created_at || new Date().toISOString(),
+    };
+
+    await saveHabitCompletion(completion);
+  },
+
+  setMissReason: async (habitId, date, reason) => {
+    const { habitCompletions, saveHabitCompletion } = get();
+    const existing = habitCompletions.find(
+      (c) => c.habit_id === habitId && c.date === date
+    );
+
+    const completion: HabitCompletion = {
+      completion_id: existing?.completion_id || `hc_${Date.now()}`,
+      habit_id: habitId,
+      date,
+      completed: false,
+      miss_reason: reason,
       created_at: existing?.created_at || new Date().toISOString(),
     };
 
@@ -436,6 +460,41 @@ export const useLogStore = create<LogState>((set, get) => ({
           notes: null,
           sick: false,
           accomplishments: [],
+          created_at: new Date().toISOString(),
+        };
+
+    await saveDailyLog(log);
+  },
+
+  getDailyFocus: (date) => {
+    const { dailyLogs } = get();
+    const log = dailyLogs.find((l) => l.date === date);
+    return {
+      primary: log?.primary_goal_id ?? null,
+      secondary: log?.secondary_goal_id ?? null,
+    };
+  },
+
+  setDailyFocus: async (date, primaryGoalId, secondaryGoalId) => {
+    const { dailyLogs, saveDailyLog } = get();
+    const existing = dailyLogs.find((l) => l.date === date);
+
+    const log: DailyLog = existing
+      ? { ...existing, primary_goal_id: primaryGoalId, secondary_goal_id: secondaryGoalId ?? null }
+      : {
+          date,
+          day_type: null,
+          energy_level: null,
+          hours_slept: null,
+          work_hours: null,
+          school_hours: null,
+          free_hours: null,
+          overall_rating: null,
+          notes: null,
+          sick: false,
+          accomplishments: [],
+          primary_goal_id: primaryGoalId,
+          secondary_goal_id: secondaryGoalId ?? null,
           created_at: new Date().toISOString(),
         };
 

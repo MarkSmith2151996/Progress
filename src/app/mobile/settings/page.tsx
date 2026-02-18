@@ -8,6 +8,7 @@ import { useLogStore } from '@/stores/logStore';
 import { useGoalStore } from '@/stores/goalStore';
 import { useSettingsStore } from '@/stores/settingsStore';
 import { FontSize, KeyboardSize, CoachTone, DigestFrequency } from '@/types';
+import { format } from 'date-fns';
 import { CURATED_THEMES, getThemeByName } from '@/lib/themes';
 import {
   MobileContainer,
@@ -349,6 +350,7 @@ export default function MobileSettingsPage() {
     keyboard_size, setKeyboardSize,
     show_streaks, setShowStreaks,
     notifications_enabled, setNotificationsEnabled,
+    baseline_date, setBaselineDate,
     fetchSettings,
   } = useSettingsStore();
 
@@ -756,6 +758,34 @@ export default function MobileSettingsPage() {
                     <DangerButton size="sm" onClick={() => setShowClearConfirm(true)}>
                       Clear
                     </DangerButton>
+                  </SettingsItem>
+                </SettingsList>
+                <SettingsList style={{ marginTop: 8 }}>
+                  <SettingsItem>
+                    <ItemContent>
+                      <ItemIcon color="#ffeaa7">B</ItemIcon>
+                      <ItemText>Report Card Baseline</ItemText>
+                    </ItemContent>
+                    <span style={{ fontSize: 11, color: '#808080' }}>
+                      {baseline_date ? format(new Date(baseline_date + 'T00:00:00'), 'MMM d, yyyy') : 'Not set'}
+                    </span>
+                  </SettingsItem>
+                  <SettingsItem>
+                    <ItemContent>
+                      <ItemText style={{ fontSize: 10, color: '#808080' }}>
+                        Weeks before baseline show zeroed scores
+                      </ItemText>
+                    </ItemContent>
+                    <div style={{ display: 'flex', gap: 4 }}>
+                      <Button size="sm" onClick={() => setBaselineDate(format(new Date(), 'yyyy-MM-dd'))}>
+                        Reset Now
+                      </Button>
+                      {baseline_date && (
+                        <Button size="sm" onClick={() => setBaselineDate(null)}>
+                          Clear
+                        </Button>
+                      )}
+                    </div>
                   </SettingsItem>
                 </SettingsList>
                 <SettingsList style={{ marginTop: 8 }}>

@@ -29,6 +29,7 @@ interface SettingsState extends UserSettings {
   setDigestFrequency: (freq: DigestFrequency) => void;
   setShowStreaks: (show: boolean) => void;
   setKeyboardSize: (size: KeyboardSize) => void;
+  setBaselineDate: (date: string | null) => void;
   syncPreferences: () => Promise<void>;
 }
 
@@ -73,6 +74,7 @@ export const useSettingsStore = create<SettingsState>()(
       digest_frequency: 'daily' as DigestFrequency,
       keyboard_size: 'medium' as KeyboardSize,
       show_streaks: true,
+      baseline_date: '2026-02-17',
 
       // Existing setters
       setTheme: (theme) => {
@@ -163,6 +165,11 @@ export const useSettingsStore = create<SettingsState>()(
         debouncedSync(get().syncPreferences);
       },
 
+      setBaselineDate: (baseline_date) => {
+        set({ baseline_date });
+        debouncedSync(get().syncPreferences);
+      },
+
       // Sync all preferences to Supabase as JSONB
       syncPreferences: async () => {
         if (!supabase.isSupabaseConfigured()) return;
@@ -182,6 +189,7 @@ export const useSettingsStore = create<SettingsState>()(
             show_streaks: state.show_streaks,
             notifications_enabled: state.notifications_enabled,
             week_colors: state.week_colors,
+            baseline_date: state.baseline_date,
           });
         } catch (error) {
           console.error('Failed to sync preferences to Supabase:', error);
@@ -213,6 +221,7 @@ export const useSettingsStore = create<SettingsState>()(
                   if (prefs.show_streaks !== undefined) updates.show_streaks = prefs.show_streaks as boolean;
                   if (prefs.notifications_enabled !== undefined) updates.notifications_enabled = prefs.notifications_enabled as boolean;
                   if (prefs.week_colors) updates.week_colors = prefs.week_colors as Record<string, string>;
+                  if (prefs.baseline_date !== undefined) updates.baseline_date = prefs.baseline_date as string | null;
                 }
                 set({ ...updates, isLoading: false });
 
@@ -262,6 +271,7 @@ export const useSettingsStore = create<SettingsState>()(
         digest_frequency: state.digest_frequency,
         keyboard_size: state.keyboard_size,
         show_streaks: state.show_streaks,
+        baseline_date: state.baseline_date,
       }),
     }
   )

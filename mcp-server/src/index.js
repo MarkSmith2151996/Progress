@@ -115,6 +115,31 @@ server.tool(
     const todayStr = getToday();
     const isCurrentWeek = wsStr <= todayStr && weStr >= todayStr;
 
+    // Baseline check: return zeroed report for weeks before baseline_date
+    try {
+      const settings = await db.fetchUserSettings();
+      const baselineDate = settings?.preferences?.baseline_date;
+      if (baselineDate && weStr < baselineDate) {
+        return {
+          content: [{
+            type: 'text',
+            text: JSON.stringify({
+              week: `${wsStr} to ${weStr}`,
+              is_current_week: isCurrentWeek,
+              score: 0, grade: '—',
+              message: `Week is before baseline date (${baselineDate}). Scores reset.`,
+              tasks: { completed: 0, total: 0, rate: 0 },
+              habits: { completed: 0, total: 0, rate: 0 },
+              logging: { days: 0, rate: 0 },
+              goals: [], wins: [],
+            }, null, 2),
+          }],
+        };
+      }
+    } catch (e) {
+      // If settings fetch fails, continue normally
+    }
+
     const [tasks, habitCompletions, dailyLogs, goals] = await Promise.all([
       db.fetchTasks(wsStr, weStr),
       db.fetchHabitCompletions(wsStr, weStr),
@@ -247,13 +272,14 @@ server.tool(
 
 server.tool(
   'toggle_habit',
-  'Mark a habit as done or undone for a specific date.',
+  'Mark a habit as done or undone for a specific date. Optionally set a miss reason when marking undone.',
   {
     habit_id: z.string().describe('The habit ID'),
     date: z.string().optional().describe('Date (YYYY-MM-DD). Defaults to today.'),
     completed: z.boolean().optional().describe('Set to true (done) or false (undone). Defaults to true.'),
+    miss_reason: z.enum(['no_time', 'forgot', 'not_prioritized', 'not_applicable']).optional().describe('Why the habit was missed (only when completed=false)'),
   },
-  async ({ habit_id, date, completed }) => {
+  async ({ habit_id, date, completed, miss_reason }) => {
     const targetDate = date || getToday();
     const isDone = completed !== undefined ? completed : true;
 
@@ -265,6 +291,7 @@ server.tool(
       habit_id,
       date: targetDate,
       completed: isDone,
+      miss_reason: isDone ? null : (miss_reason || null),
       created_at: existingCompletion?.created_at || new Date().toISOString(),
     };
 
@@ -366,6 +393,63 @@ server.tool(
 
     await db.upsertDailyLog(log);
     return { content: [{ type: 'text', text: `Weekly summary stored for week of ${week_start}` }] };
+  }
+);
+
+server.tool(
+  'set_daily_focus',
+  'Set the primary and optional secondary focus goal for a day.',
+  {
+    date: z.string().optional().describe('Date (YYYY-MM-DD). Defaults to today.'),
+    primary_goal_id: z.string().nullable().describe('Primary focus goal ID (null to clear)'),
+    secondary_goal_id: z.string().nullable().optional().describe('Secondary focus goal ID (null to clear)'),
+  },
+  async ({ date, primary_goal_id, secondary_goal_id }) => {
+    const targetDate = date || getToday();
+    const existingLogs = await db.fetchDailyLogs(targetDate, targetDate);
+    const existing = existingLogs[0];
+
+    const log = {
+      date: targetDate,
+      day_type: existing?.day_type ?? null,
+      difficulty_tier: existing?.difficulty_tier ?? 'med',
+      energy_level: existing?.energy_level ?? null,
+      hours_slept: existing?.hours_slept ?? null,
+      work_hours: existing?.work_hours ?? null,
+      school_hours: existing?.school_hours ?? null,
+      free_hours: existing?.free_hours ?? null,
+      overall_rating: existing?.overall_rating ?? null,
+      notes: existing?.notes ?? null,
+      sick: existing?.sick ?? false,
+      accomplishments: existing?.accomplishments ?? [],
+      primary_goal_id: primary_goal_id,
+      secondary_goal_id: secondary_goal_id ?? null,
+      created_at: existing?.created_at ?? new Date().toISOString(),
+    };
+
+    await db.upsertDailyLog(log);
+
+    // Fetch goal titles for confirmation
+    let primaryTitle = 'None';
+    let secondaryTitle = 'None';
+    if (primary_goal_id || secondary_goal_id) {
+      const goals = await db.fetchGoals(false);
+      if (primary_goal_id) {
+        const g = goals.find((g) => g.goal_id === primary_goal_id);
+        primaryTitle = g ? g.title : primary_goal_id;
+      }
+      if (secondary_goal_id) {
+        const g = goals.find((g) => g.goal_id === secondary_goal_id);
+        secondaryTitle = g ? g.title : secondary_goal_id;
+      }
+    }
+
+    return {
+      content: [{
+        type: 'text',
+        text: `Daily focus set for ${targetDate}:\n  Primary: ${primaryTitle}\n  Secondary: ${secondaryTitle}`,
+      }],
+    };
   }
 );
 
