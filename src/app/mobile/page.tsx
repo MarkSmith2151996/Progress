@@ -10,17 +10,6 @@ import { useGoalStore } from '@/stores/goalStore';
 import { Goal, Habit, HabitWithStatus, GoalType, GoalStatus, Task, TaskStatus, DifficultyTier, MissReason } from '@/types';
 import { isHabitActiveOnDate } from '@/lib/metrics';
 import { useSettingsStore } from '@/stores/settingsStore';
-import dynamic from 'next/dynamic';
-import type { WeekScoreData, CategoryData } from '@/components/mobile/ReportCharts';
-
-const ScoreTrendChart = dynamic(
-  () => import('@/components/mobile/ReportCharts').then((mod) => mod.ScoreTrendChart),
-  { ssr: false }
-);
-const CategoryBreakdownChart = dynamic(
-  () => import('@/components/mobile/ReportCharts').then((mod) => mod.CategoryBreakdownChart),
-  { ssr: false }
-);
 import {
   MobileContainer,
   MainWindow,
@@ -528,7 +517,6 @@ export default function MobilePage() {
     const ws = startOfWeek(now, { weekStartsOn: 1 });
     return format(ws, 'yyyy-MM-dd');
   });
-  const [trendWeeks, setTrendWeeks] = useState<number>(0); // 0 = all
 
   // Difficulty tier state
   const [showDifficultyPopup, setShowDifficultyPopup] = useState(false);
@@ -1274,46 +1262,10 @@ export default function MobilePage() {
     setReportWeekStart(format(ws, 'yyyy-MM-dd'));
   };
 
-  const computeMultiWeekData = (currentWeekStart: string, numWeeks: number) => {
-    const weekScores: WeekScoreData[] = [];
-    const categoryData: CategoryData[] = [];
-
-    // If numWeeks is 0, compute "all" weeks from baseline (or earliest log) to currentWeekStart
-    let actualWeeks = numWeeks;
-    if (actualWeeks === 0) {
-      const { baseline_date } = useSettingsStore.getState();
-      const earliest = baseline_date
-        || (dailyLogs.length > 0
-          ? [...dailyLogs].sort((a, b) => a.date.localeCompare(b.date))[0].date
-          : currentWeekStart);
-      const earliestWs = startOfWeek(new Date(earliest + 'T00:00:00'), { weekStartsOn: 1 });
-      const currentWs = new Date(currentWeekStart + 'T00:00:00');
-      actualWeeks = Math.max(1, Math.round((currentWs.getTime() - earliestWs.getTime()) / (7 * 24 * 60 * 60 * 1000)) + 1);
-    }
-
-    for (let i = actualWeeks - 1; i >= 0; i--) {
-      const ws = new Date(currentWeekStart + 'T00:00:00');
-      ws.setDate(ws.getDate() - i * 7);
-      const wsStr = format(ws, 'yyyy-MM-dd');
-      const r = computeWeeklyReport(wsStr);
-      const label = format(new Date(wsStr + 'T00:00:00'), 'M/d');
-      weekScores.push({ label, score: r.score });
-      categoryData.push({
-        label,
-        tasks: Math.round(r.taskRate * 100),
-        habits: Math.round(r.habitRate * 100),
-        logging: Math.round(r.loggingRate * 100),
-        goals: Math.round(r.avgGoalProgress * 100),
-      });
-    }
-    return { weekScores, categoryData };
-  };
-
   const renderReport = () => {
     const report = computeWeeklyReport(reportWeekStart);
     const startLabel = format(new Date(report.wsStr + 'T00:00:00'), 'MMM d');
     const endLabel = format(new Date(report.weStr + 'T00:00:00'), 'MMM d');
-    const { weekScores, categoryData } = computeMultiWeekData(reportWeekStart, trendWeeks);
 
     return (
       <>
@@ -1362,35 +1314,6 @@ export default function MobilePage() {
             <StatValue>{report.daysLogged}/7</StatValue>
           </ReportStatRow>
         </ListContainer>
-
-        {/* Trends */}
-        <SectionHeader style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-          <span>Trends{trendWeeks > 0 ? ` (${trendWeeks}w)` : ' (All)'}</span>
-          <div style={{ display: 'flex', gap: 2 }}>
-            {[4, 8, 12, 0].map((w) => (
-              <button
-                key={w}
-                onClick={() => setTrendWeeks(w)}
-                style={{
-                  fontSize: 9,
-                  fontFamily: 'inherit',
-                  padding: '1px 5px',
-                  background: trendWeeks === w ? '#000080' : '#c0c0c0',
-                  color: trendWeeks === w ? '#fff' : '#000',
-                  border: '1px solid',
-                  borderColor: trendWeeks === w
-                    ? '#808080 #dfdfdf #dfdfdf #808080'
-                    : '#dfdfdf #808080 #808080 #dfdfdf',
-                  cursor: 'pointer',
-                }}
-              >
-                {w === 0 ? 'All' : `${w}w`}
-              </button>
-            ))}
-          </div>
-        </SectionHeader>
-        <ScoreTrendChart data={weekScores} />
-        <CategoryBreakdownChart data={categoryData} />
 
         {/* Goal progress */}
         {report.goalSnapshots.length > 0 && (

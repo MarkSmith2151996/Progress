@@ -616,6 +616,364 @@ Be conversational. You're a friend helping me take stock, not generating a sprea
 );
 
 // ============================================
+// COACHING TOOLS
+// ============================================
+
+server.tool(
+  'get_coaching_snapshot',
+  'Get a comprehensive snapshot for coaching: today\'s status, this week\'s report, last 3 weeks for comparison, habit streaks, upcoming deadlines, and recent accomplishments. One call gives Claude everything needed to coach.',
+  {
+    lookback_weeks: z.number().optional().describe('How many past weeks to include for trend comparison. Defaults to 3.'),
+  },
+  async ({ lookback_weeks }) => {
+    const weeks = lookback_weeks || 3;
+    const todayStr = getToday();
+    const thisWeekStart = startOfWeek(new Date(), { weekStartsOn: 1 });
+    const lookbackStart = format(subDays(new Date(), weeks * 7), 'yyyy-MM-dd');
+
+    const [goals, tasks, dailyLogs, habits, habitCompletions, settings] = await Promise.all([
+      db.fetchGoals(true),
+      db.fetchTasks(lookbackStart, todayStr),
+      db.fetchDailyLogs(lookbackStart, todayStr),
+      db.fetchHabits(true),
+      db.fetchHabitCompletions(lookbackStart, todayStr),
+      db.fetchUserSettings(),
+    ]);
+
+    // TODAY
+    const todayTasks = tasks.filter((t) => t.planned_date === todayStr);
+    const todayCompletedTasks = todayTasks.filter((t) => t.status === 'completed');
+    const todayCompletions = habitCompletions.filter((c) => c.date === todayStr);
+    const todayLog = dailyLogs.find((l) => l.date === todayStr);
+
+    const todayHabits = habits.map((h) => {
+      const dayName = format(new Date(), 'EEE').toLowerCase().slice(0, 3);
+      const daysActive = (h.days_active || []).map((x) => x.toLowerCase().slice(0, 3));
+      const isScheduled = daysActive.length === 0 || daysActive.includes(dayName);
+      const completion = todayCompletions.find((c) => c.habit_id === h.habit_id);
+      return {
+        name: h.name,
+        scheduled_today: isScheduled,
+        completed: completion?.completed ?? false,
+        miss_reason: completion?.miss_reason ?? null,
+      };
+    }).filter((h) => h.scheduled_today);
+
+    // HABIT STREAKS (per habit)
+    const habitStreaks = habits.map((h) => {
+      let streak = 0;
+      const d = new Date();
+      for (let i = 0; i < 60; i++) {
+        const dateStr = format(d, 'yyyy-MM-dd');
+        const dayName = format(d, 'EEE').toLowerCase().slice(0, 3);
+        const daysActive = (h.days_active || []).map((x) => x.toLowerCase().slice(0, 3));
+        const isScheduled = daysActive.length === 0 || daysActive.includes(dayName);
+        if (!isScheduled) { d.setDate(d.getDate() - 1); continue; }
+        const comp = habitCompletions.find((c) => c.habit_id === h.habit_id && c.date === dateStr);
+        if (comp?.completed) { streak++; d.setDate(d.getDate() - 1); }
+        else break;
+      }
+      return { habit_id: h.habit_id, name: h.name, current_streak: streak };
+    });
+
+    // LOGGING STREAK
+    let loggingStreak = 0;
+    const d = new Date();
+    for (let i = 0; i < 365; i++) {
+      const dateStr = format(d, 'yyyy-MM-dd');
+      if (dailyLogs.some((l) => l.date === dateStr)) { loggingStreak++; d.setDate(d.getDate() - 1); }
+      else break;
+    }
+
+    // WEEKLY REPORTS for trend
+    const weeklyReports = [];
+    for (let w = 0; w <= weeks; w++) {
+      const ws = new Date(thisWeekStart);
+      ws.setDate(ws.getDate() - w * 7);
+      const we = endOfWeek(ws, { weekStartsOn: 1 });
+      const wsStr = format(ws, 'yyyy-MM-dd');
+      const weStr = format(we, 'yyyy-MM-dd');
+      const isCurrentWeek = w === 0;
+
+      const wTasks = tasks.filter((t) => t.planned_date >= wsStr && t.planned_date <= weStr);
+      const wCompleted = wTasks.filter((t) => t.status === 'completed');
+      const taskRate = wTasks.length > 0 ? wCompleted.length / wTasks.length : 0;
+
+      const dayLimit = isCurrentWeek ? todayStr : weStr;
+      let habitSlots = 0, habitDone = 0;
+      for (let dd = new Date(ws); format(dd, 'yyyy-MM-dd') <= dayLimit; dd.setDate(dd.getDate() + 1)) {
+        const dateStr = format(dd, 'yyyy-MM-dd');
+        const dayName = format(dd, 'EEE').toLowerCase().slice(0, 3);
+        habits.forEach((h) => {
+          const daysActive = (h.days_active || []).map((x) => x.toLowerCase().slice(0, 3));
+          if (daysActive.length === 0 || daysActive.includes(dayName)) {
+            habitSlots++;
+            const comp = habitCompletions.find((c) => c.habit_id === h.habit_id && c.date === dateStr);
+            if (comp?.completed) habitDone++;
+          }
+        });
+      }
+      const habitRate = habitSlots > 0 ? habitDone / habitSlots : 0;
+
+      const wLogs = dailyLogs.filter((l) => l.date >= wsStr && l.date <= weStr);
+      const loggingRate = wLogs.length / 7;
+
+      const goalProgress = goals.length > 0
+        ? goals.reduce((sum, g) => {
+            const range = g.target_value - g.starting_value;
+            return sum + (range > 0 ? Math.min(1, (g.current_value - g.starting_value) / range) : 0);
+          }, 0) / goals.length
+        : 0;
+
+      const score = Math.round((taskRate * 0.3 + habitRate * 0.3 + loggingRate * 0.2 + goalProgress * 0.2) * 100);
+      const grade = score >= 90 ? 'A' : score >= 80 ? 'B' : score >= 70 ? 'C' : score >= 60 ? 'D' : 'F';
+
+      // Wins from that week
+      const wins = [];
+      wLogs.forEach((l) => { if (l.accomplishments) l.accomplishments.forEach((a) => wins.push(a)); });
+
+      weeklyReports.push({
+        week: `${wsStr} to ${weStr}`,
+        is_current: isCurrentWeek,
+        score, grade,
+        tasks: { done: wCompleted.length, total: wTasks.length, pct: Math.round(taskRate * 100) },
+        habits: { done: habitDone, total: habitSlots, pct: Math.round(habitRate * 100) },
+        logging: { days: wLogs.length, pct: Math.round(loggingRate * 100) },
+        wins,
+      });
+    }
+
+    // GOALS with deadlines + pace
+    const goalStatus = goals.map((g) => {
+      const range = g.target_value - g.starting_value;
+      const progress = range > 0 ? Math.round(((g.current_value - g.starting_value) / range) * 100) : 0;
+      const daysLeft = Math.max(0, Math.ceil((new Date(g.deadline).getTime() - Date.now()) / (1000 * 60 * 60 * 24)));
+      const totalDays = Math.max(1, Math.ceil((new Date(g.deadline).getTime() - new Date(g.start_date).getTime()) / (1000 * 60 * 60 * 24)));
+      const elapsed = totalDays - daysLeft;
+      const expectedPct = Math.round((elapsed / totalDays) * 100);
+      const pace = progress >= expectedPct + 10 ? 'ahead' : progress >= expectedPct - 10 ? 'on_track' : 'behind';
+      return {
+        title: g.title, goal_id: g.goal_id, notes: g.notes || null,
+        progress_pct: Math.min(100, progress), expected_pct: Math.min(100, expectedPct), pace,
+        current: g.current_value, target: g.target_value, unit: g.unit,
+        days_remaining: daysLeft, deadline: g.deadline,
+      };
+    });
+
+    // RECENT ACCOMPLISHMENTS (last 7 days)
+    const recentAccomplishments = [];
+    dailyLogs.filter((l) => l.date >= format(subDays(new Date(), 7), 'yyyy-MM-dd')).forEach((l) => {
+      if (l.accomplishments) l.accomplishments.forEach((a) => recentAccomplishments.push({ text: a, date: l.date }));
+      if (l.notes) recentAccomplishments.push({ text: `[Day note] ${l.notes}`, date: l.date });
+    });
+
+    // MISSED HABITS (last 7 days, with reasons)
+    const missedHabits = [];
+    habitCompletions
+      .filter((c) => !c.completed && c.date >= format(subDays(new Date(), 7), 'yyyy-MM-dd'))
+      .forEach((c) => {
+        const habit = habits.find((h) => h.habit_id === c.habit_id);
+        missedHabits.push({ habit: habit?.name || c.habit_id, date: c.date, reason: c.miss_reason || 'unknown' });
+      });
+
+    const snapshot = {
+      today: {
+        date: todayStr,
+        day_notes: todayLog?.notes || null,
+        difficulty_tier: todayLog?.difficulty_tier || null,
+        tasks: { done: todayCompletedTasks.length, total: todayTasks.length, pending: todayTasks.filter((t) => t.status === 'planned').map((t) => t.description) },
+        habits: todayHabits,
+      },
+      streaks: { logging_days: loggingStreak, per_habit: habitStreaks },
+      weekly_trend: weeklyReports,
+      goals: goalStatus,
+      recent_accomplishments: recentAccomplishments,
+      missed_habits_7d: missedHabits,
+    };
+
+    return { content: [{ type: 'text', text: JSON.stringify(snapshot, null, 2) }] };
+  }
+);
+
+server.tool(
+  'get_pattern_analysis',
+  'Analyze behavioral patterns: best/worst days of the week for habits and tasks, most-missed habits, consistency trends, and energy/sleep correlations if logged.',
+  {
+    lookback_days: z.number().optional().describe('Days to analyze. Defaults to 28 (4 weeks).'),
+  },
+  async ({ lookback_days }) => {
+    const days = lookback_days || 28;
+    const endDate = getToday();
+    const startDate = format(subDays(new Date(), days), 'yyyy-MM-dd');
+
+    const [tasks, dailyLogs, habits, habitCompletions] = await Promise.all([
+      db.fetchTasks(startDate, endDate),
+      db.fetchDailyLogs(startDate, endDate),
+      db.fetchHabits(true),
+      db.fetchHabitCompletions(startDate, endDate),
+    ]);
+
+    // HABITS BY DAY OF WEEK
+    const dayNames = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+    const habitsByDay = {};
+    dayNames.forEach((d) => { habitsByDay[d] = { scheduled: 0, completed: 0 }; });
+
+    habitCompletions.forEach((c) => {
+      const dow = dayNames[new Date(c.date + 'T00:00:00').getDay()];
+      habitsByDay[dow].scheduled++;
+      if (c.completed) habitsByDay[dow].completed++;
+    });
+
+    const habitDayRates = Object.entries(habitsByDay).map(([day, data]) => ({
+      day,
+      rate: data.scheduled > 0 ? Math.round((data.completed / data.scheduled) * 100) : null,
+      completed: data.completed,
+      scheduled: data.scheduled,
+    })).filter((d) => d.rate !== null);
+
+    const bestHabitDay = habitDayRates.length > 0 ? habitDayRates.reduce((a, b) => (a.rate > b.rate ? a : b)) : null;
+    const worstHabitDay = habitDayRates.length > 0 ? habitDayRates.reduce((a, b) => (a.rate < b.rate ? a : b)) : null;
+
+    // TASKS BY DAY OF WEEK
+    const tasksByDay = {};
+    dayNames.forEach((d) => { tasksByDay[d] = { total: 0, completed: 0 }; });
+
+    tasks.forEach((t) => {
+      const dow = dayNames[new Date(t.planned_date + 'T00:00:00').getDay()];
+      tasksByDay[dow].total++;
+      if (t.status === 'completed') tasksByDay[dow].completed++;
+    });
+
+    const taskDayRates = Object.entries(tasksByDay).map(([day, data]) => ({
+      day,
+      rate: data.total > 0 ? Math.round((data.completed / data.total) * 100) : null,
+      completed: data.completed,
+      total: data.total,
+    })).filter((d) => d.rate !== null);
+
+    // MOST MISSED HABITS
+    const habitMissCounts = {};
+    habitCompletions.filter((c) => !c.completed).forEach((c) => {
+      const habit = habits.find((h) => h.habit_id === c.habit_id);
+      const name = habit?.name || c.habit_id;
+      if (!habitMissCounts[name]) habitMissCounts[name] = { count: 0, reasons: {} };
+      habitMissCounts[name].count++;
+      const reason = c.miss_reason || 'unspecified';
+      habitMissCounts[name].reasons[reason] = (habitMissCounts[name].reasons[reason] || 0) + 1;
+    });
+
+    const mostMissed = Object.entries(habitMissCounts)
+      .map(([name, data]) => ({ name, missed: data.count, top_reason: Object.entries(data.reasons).sort((a, b) => b[1] - a[1])[0]?.[0] || 'unknown' }))
+      .sort((a, b) => b.missed - a.missed);
+
+    // ENERGY & SLEEP CORRELATION (if data exists)
+    const logsWithEnergy = dailyLogs.filter((l) => l.energy_level != null);
+    const logsWithSleep = dailyLogs.filter((l) => l.hours_slept != null);
+
+    let energyInsight = null;
+    if (logsWithEnergy.length >= 3) {
+      const avgEnergy = logsWithEnergy.reduce((sum, l) => sum + l.energy_level, 0) / logsWithEnergy.length;
+      const highEnergyDays = logsWithEnergy.filter((l) => l.energy_level >= 7);
+      const lowEnergyDays = logsWithEnergy.filter((l) => l.energy_level <= 3);
+      energyInsight = {
+        avg: Math.round(avgEnergy * 10) / 10,
+        high_energy_days: highEnergyDays.length,
+        low_energy_days: lowEnergyDays.length,
+        total_logged: logsWithEnergy.length,
+      };
+    }
+
+    let sleepInsight = null;
+    if (logsWithSleep.length >= 3) {
+      const avgSleep = logsWithSleep.reduce((sum, l) => sum + l.hours_slept, 0) / logsWithSleep.length;
+      sleepInsight = {
+        avg_hours: Math.round(avgSleep * 10) / 10,
+        nights_under_6h: logsWithSleep.filter((l) => l.hours_slept < 6).length,
+        nights_over_8h: logsWithSleep.filter((l) => l.hours_slept >= 8).length,
+        total_logged: logsWithSleep.length,
+      };
+    }
+
+    // DIFFICULTY vs PERFORMANCE
+    const tierPerformance = { low: { tasks: 0, tasksDone: 0, habits: 0, habitsDone: 0 }, med: { tasks: 0, tasksDone: 0, habits: 0, habitsDone: 0 }, high: { tasks: 0, tasksDone: 0, habits: 0, habitsDone: 0 } };
+    dailyLogs.forEach((l) => {
+      const tier = l.difficulty_tier || 'med';
+      if (!tierPerformance[tier]) return;
+      const dayTasks = tasks.filter((t) => t.planned_date === l.date);
+      tierPerformance[tier].tasks += dayTasks.length;
+      tierPerformance[tier].tasksDone += dayTasks.filter((t) => t.status === 'completed').length;
+      const dayCompletions = habitCompletions.filter((c) => c.date === l.date);
+      tierPerformance[tier].habits += dayCompletions.length;
+      tierPerformance[tier].habitsDone += dayCompletions.filter((c) => c.completed).length;
+    });
+
+    const analysis = {
+      period: `${startDate} to ${endDate}`,
+      habits_by_day_of_week: habitDayRates,
+      best_habit_day: bestHabitDay,
+      worst_habit_day: worstHabitDay,
+      tasks_by_day_of_week: taskDayRates,
+      most_missed_habits: mostMissed.slice(0, 5),
+      performance_by_difficulty: Object.entries(tierPerformance).map(([tier, data]) => ({
+        tier,
+        task_rate: data.tasks > 0 ? Math.round((data.tasksDone / data.tasks) * 100) : null,
+        habit_rate: data.habits > 0 ? Math.round((data.habitsDone / data.habits) * 100) : null,
+      })),
+      energy: energyInsight,
+      sleep: sleepInsight,
+    };
+
+    return { content: [{ type: 'text', text: JSON.stringify(analysis, null, 2) }] };
+  }
+);
+
+// ============================================
+// MCP PROMPT: Observational Coach
+// ============================================
+
+server.prompt(
+  'daily_coaching',
+  'Get a personalized coaching session based on your real data — specific observations, not generic advice.',
+  {},
+  async () => {
+    return {
+      messages: [{
+        role: 'user',
+        content: {
+          type: 'text',
+          text: `Give me a quick coaching check-in based on my actual data.
+
+You are my OBSERVATIONAL coach. That means:
+- You only comment on what you can SEE in the data. No generic motivational fluff.
+- If I'm doing well at something, say exactly what. ("You've hit your reading habit 6 days straight.")
+- If I'm slipping, name the specific thing. ("You missed Exercise 3 of the last 5 days, and the reason was 'no time' every time.")
+- If a goal is behind pace, do the math. ("You're at 30% with 12 days left — you need to average X per day to catch up.")
+- If you spot a pattern, call it out. ("Your task completion drops on Thursdays and Fridays — your high-difficulty days.")
+
+Here's how to run this session:
+
+1. Call \`get_coaching_snapshot\` to get today's status + weekly trends + streaks + goals.
+
+2. Call \`get_pattern_analysis\` to get behavioral patterns — day-of-week performance, missed habit reasons, difficulty correlations.
+
+3. Based on the data, give me a coaching update structured like this:
+
+   **Right Now** — What's on my plate today. What's done, what's pending. Am I on pace for the week?
+
+   **What's Working** — Specific things I'm doing well. Name the habits, streaks, or improvements with actual numbers.
+
+   **Watch Out** — Specific things that are slipping or at risk. Be direct. Name the habit, the goal, the pattern. Do the math on deadlines if relevant.
+
+   **One Thing Today** — The single most impactful thing I could do today to move the needle. Not "try harder" — something concrete like "knock out the 2 pending tasks linked to [goal name]" or "you haven't logged today yet, even 30 seconds counts."
+
+Keep it short and punchy. Talk to me like a friend who's been watching my data, not a therapist. No bullet points that start with "Great job!" unless I actually did a great job at something specific.`,
+        },
+      }],
+    };
+  }
+);
+
+// ============================================
 // START SERVER
 // ============================================
 
