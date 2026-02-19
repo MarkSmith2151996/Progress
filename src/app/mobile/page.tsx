@@ -10,6 +10,17 @@ import { useGoalStore } from '@/stores/goalStore';
 import { Goal, Habit, HabitWithStatus, GoalType, GoalStatus, Task, TaskStatus, DifficultyTier, MissReason } from '@/types';
 import { isHabitActiveOnDate } from '@/lib/metrics';
 import { useSettingsStore } from '@/stores/settingsStore';
+import dynamic from 'next/dynamic';
+import type { WeekScoreData, CategoryData } from '@/components/mobile/ReportCharts';
+
+const ScoreTrendChart = dynamic(
+  () => import('@/components/mobile/ReportCharts').then((mod) => mod.ScoreTrendChart),
+  { ssr: false }
+);
+const CategoryBreakdownChart = dynamic(
+  () => import('@/components/mobile/ReportCharts').then((mod) => mod.CategoryBreakdownChart),
+  { ssr: false }
+);
 import {
   MobileContainer,
   MainWindow,
@@ -500,6 +511,8 @@ export default function MobilePage() {
   const [newGoalKeywords, setNewGoalKeywords] = useState<string[]>([]);
   const [newKeywordInput, setNewKeywordInput] = useState('');
   const [newGoalIncrementType, setNewGoalIncrementType] = useState<IncrementType>('count');
+  const [editingGoalNotes, setEditingGoalNotes] = useState('');
+  const [editingDayNotes, setEditingDayNotes] = useState('');
   const [newAccomplishment, setNewAccomplishment] = useState('');
   const [toastMessage, setToastMessage] = useState<string | null>(null);
   const [toastVisible, setToastVisible] = useState(false);
@@ -688,6 +701,7 @@ export default function MobilePage() {
     setNewGoalType(goal.type || 'monthly');
     setNewGoalKeywords(goal.keywords || []);
     setNewGoalIncrementType(goal.increment_type || 'count');
+    setEditingGoalNotes(goal.notes || '');
     setNewKeywordInput('');
     setShowEditGoal(true);
   };
@@ -708,6 +722,7 @@ export default function MobilePage() {
         type: newGoalType,
         keywords: newGoalKeywords.length > 0 ? newGoalKeywords : undefined,
         increment_type: newGoalIncrementType,
+        notes: editingGoalNotes.trim() || null,
         updated_at: new Date().toISOString(),
       };
 
@@ -1258,10 +1273,32 @@ export default function MobilePage() {
     setReportWeekStart(format(ws, 'yyyy-MM-dd'));
   };
 
+  const computeMultiWeekData = (currentWeekStart: string, numWeeks: number) => {
+    const weekScores: WeekScoreData[] = [];
+    const categoryData: CategoryData[] = [];
+    for (let i = numWeeks - 1; i >= 0; i--) {
+      const ws = new Date(currentWeekStart + 'T00:00:00');
+      ws.setDate(ws.getDate() - i * 7);
+      const wsStr = format(ws, 'yyyy-MM-dd');
+      const r = computeWeeklyReport(wsStr);
+      const label = format(new Date(wsStr + 'T00:00:00'), 'M/d');
+      weekScores.push({ label, score: r.score });
+      categoryData.push({
+        label,
+        tasks: Math.round(r.taskRate * 100),
+        habits: Math.round(r.habitRate * 100),
+        logging: Math.round(r.loggingRate * 100),
+        goals: Math.round(r.avgGoalProgress * 100),
+      });
+    }
+    return { weekScores, categoryData };
+  };
+
   const renderReport = () => {
     const report = computeWeeklyReport(reportWeekStart);
     const startLabel = format(new Date(report.wsStr + 'T00:00:00'), 'MMM d');
     const endLabel = format(new Date(report.weStr + 'T00:00:00'), 'MMM d');
+    const { weekScores, categoryData } = computeMultiWeekData(reportWeekStart, 8);
 
     return (
       <>
@@ -1310,6 +1347,11 @@ export default function MobilePage() {
             <StatValue>{report.daysLogged}/7</StatValue>
           </ReportStatRow>
         </ListContainer>
+
+        {/* Trends (8 Weeks) */}
+        <SectionHeader>Trends (8 Weeks)</SectionHeader>
+        <ScoreTrendChart data={weekScores} />
+        <CategoryBreakdownChart data={categoryData} />
 
         {/* Goal progress */}
         {report.goalSnapshots.length > 0 && (
@@ -1571,6 +1613,17 @@ export default function MobilePage() {
                     </Checkbox>
                     <ListItemText $completed={isCompleted}>
                       {task.description}
+                      {task.notes && (
+                        <span style={{
+                          fontSize: 9,
+                          color: '#808080',
+                          border: '1px solid #c0c0c0',
+                          background: '#f0f0f0',
+                          padding: '0 3px',
+                          marginLeft: 4,
+                          verticalAlign: 'middle',
+                        }}>N</span>
+                      )}
                     </ListItemText>
                     {task.time_estimated && (
                       <ListItemMeta>{task.time_estimated}m</ListItemMeta>
@@ -1738,7 +1791,11 @@ export default function MobilePage() {
           </Button>
           <Button
             style={{ minWidth: 32, fontSize: 11, padding: '4px 6px' }}
-            onClick={() => setShowDailySummary(true)}
+            onClick={() => {
+              const todayLog = dailyLogs.find(l => l.date === today);
+              setEditingDayNotes(todayLog?.notes || '');
+              setShowDailySummary(true);
+            }}
           >
             [i]
           </Button>
@@ -2134,6 +2191,14 @@ export default function MobilePage() {
                   <option value="time">Time (2 hours, 30 minutes...)</option>
                 </StyledSelect>
               </FormRow>
+              <FormRow>
+                <FormLabel>Notes</FormLabel>
+                <StyledTextArea
+                  value={editingGoalNotes}
+                  onChange={(e) => setEditingGoalNotes(e.target.value)}
+                  placeholder="Optional notes about this goal..."
+                />
+              </FormRow>
               <ButtonRow>
                 <Button
                   primary
@@ -2417,7 +2482,41 @@ export default function MobilePage() {
                   </ReportStatRow>
                 </ListContainer>
 
-                <Button fullWidth onClick={() => setShowDailySummary(false)} style={{ marginTop: 8 }}>
+                <SectionHeader>Day Notes</SectionHeader>
+                <StyledTextArea
+                  value={editingDayNotes}
+                  onChange={(e) => setEditingDayNotes(e.target.value)}
+                  placeholder="How was your day? Any thoughts..."
+                  style={{ marginBottom: 8 }}
+                />
+                <Button
+                  fullWidth
+                  onClick={async () => {
+                    const todayLog = dailyLogs.find(l => l.date === today);
+                    await saveDailyLog({
+                      date: today,
+                      day_type: todayLog?.day_type ?? null,
+                      energy_level: todayLog?.energy_level ?? null,
+                      hours_slept: todayLog?.hours_slept ?? null,
+                      work_hours: todayLog?.work_hours ?? null,
+                      school_hours: todayLog?.school_hours ?? null,
+                      free_hours: todayLog?.free_hours ?? null,
+                      overall_rating: todayLog?.overall_rating ?? null,
+                      notes: editingDayNotes.trim() || null,
+                      sick: todayLog?.sick ?? false,
+                      accomplishments: todayLog?.accomplishments,
+                      difficulty_tier: todayLog?.difficulty_tier,
+                      primary_goal_id: todayLog?.primary_goal_id,
+                      secondary_goal_id: todayLog?.secondary_goal_id,
+                      created_at: todayLog?.created_at ?? new Date().toISOString(),
+                    });
+                  }}
+                  style={{ marginBottom: 8 }}
+                >
+                  Save Notes
+                </Button>
+
+                <Button fullWidth onClick={() => setShowDailySummary(false)} style={{ marginTop: 0 }}>
                   Close
                 </Button>
               </PopupContent>
@@ -2525,6 +2624,14 @@ export default function MobilePage() {
                       value={newTaskTimeEstimated}
                       onChange={(e) => setNewTaskTimeEstimated(e.target.value)}
                       placeholder="e.g., 45"
+                    />
+                  </FormRow>
+                  <FormRow>
+                    <FormLabel>Notes (optional)</FormLabel>
+                    <StyledTextArea
+                      value={newTaskNotes}
+                      onChange={(e) => setNewTaskNotes(e.target.value)}
+                      placeholder="Optional notes..."
                     />
                   </FormRow>
                   <Button

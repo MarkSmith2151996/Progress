@@ -31,6 +31,7 @@ export interface Goal {
   priority: number;
   keywords?: string[];  // For smart goal matching: ['sat', 'test', 'practice']
   increment_type?: IncrementType;  // How to extract delta: 'count' | 'value' | 'time'
+  notes?: string | null;
   created_at: string;
   updated_at: string;
 }

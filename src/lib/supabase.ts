@@ -65,6 +65,7 @@ interface DbGoal {
   priority: number;
   keywords: string[] | null;
   increment_type: string | null;
+  notes: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -140,6 +141,7 @@ function dbToGoal(db: DbGoal): Goal {
     priority: db.priority,
     keywords: db.keywords ?? undefined,
     increment_type: (db.increment_type as Goal['increment_type']) ?? undefined,
+    notes: db.notes ?? undefined,
     created_at: db.created_at,
     updated_at: db.updated_at,
   };
@@ -161,6 +163,7 @@ function goalToDb(goal: Goal): DbGoal {
     priority: goal.priority,
     keywords: goal.keywords ?? null,
     increment_type: goal.increment_type ?? null,
+    notes: goal.notes ?? null,
     created_at: goal.created_at,
     updated_at: goal.updated_at,
   };

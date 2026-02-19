@@ -18,6 +18,7 @@ CREATE TABLE IF NOT EXISTS goals (
   priority INTEGER DEFAULT 1,
   keywords TEXT[],  -- For smart matching: ['sat', 'test', 'practice']
   increment_type TEXT DEFAULT 'count',  -- 'count' | 'value' | 'time'
+  notes TEXT,
   created_at TIMESTAMPTZ DEFAULT NOW(),
   updated_at TIMESTAMPTZ DEFAULT NOW()
 );
